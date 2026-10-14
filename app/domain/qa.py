@@ -32,6 +32,12 @@ class Answer:
     sources: list[Source]
 
 
+def _is_refusal(answer: str) -> bool:
+    """O LLM respondeu só a frase de recusa do prompt (e não uma resposta que a cite)."""
+    normalized = answer.strip().strip("\"'").strip().rstrip(".").lower()
+    return normalized == NOT_FOUND_ANSWER.rstrip(".").lower()
+
+
 def _to_source(chunk: ScoredChunk) -> Source:
     excerpt = chunk.content
     if len(excerpt) > EXCERPT_CHARS:
@@ -61,7 +67,7 @@ class QAService:
     def ask(self, question: str, document_ids: list[UUID] | None = None, top_k: int = 5) -> Answer:
         started = time.perf_counter()
 
-        [query_vector] = self._embeddings.embed([question])
+        query_vector = self._embeddings.embed_query(question)
         chunks = self._repository.search(query_vector, top_k, document_ids)
 
         if not chunks or chunks[0].score < self._min_score:
@@ -69,8 +75,10 @@ class QAService:
             answer_text, sources, model = NOT_FOUND_ANSWER, [], NO_MODEL
         else:
             answer_text = self._llm.generate(build_qa_prompt(question, chunks)).strip()
-            sources = [_to_source(c) for c in chunks]
             model = self._llm.model_name
+            # O limiar é frouxo (ver spec, RF06): muitas recusas vêm do próprio LLM.
+            # Nesse caso as fontes seriam enganosas, pois não sustentam resposta nenhuma.
+            sources = [] if _is_refusal(answer_text) else [_to_source(c) for c in chunks]
 
         latency_ms = int((time.perf_counter() - started) * 1000)
         record = self._repository.save_question(

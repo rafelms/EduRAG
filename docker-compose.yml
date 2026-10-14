@@ -8,7 +8,11 @@ services:
       OLLAMA_BASE_URL: http://ollama:11434
       LLM_MODEL: ${LLM_MODEL:-qwen2.5:3b}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
-      MIN_SCORE: ${MIN_SCORE:-0.5}
+      EMBEDDING_DOCUMENT_PREFIX: "${EMBEDDING_DOCUMENT_PREFIX-search_document: }"
+      EMBEDDING_QUERY_PREFIX: "${EMBEDDING_QUERY_PREFIX-search_query: }"
+      LLM_NUM_CTX: ${LLM_NUM_CTX:-8192}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-300}
+      MIN_SCORE: ${MIN_SCORE:-0.3}
       MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-20}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
@@ -22,7 +26,7 @@ services:
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -36,7 +40,7 @@ services:
     networks: [interna]
 
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:0.12.3
     volumes:
       - ollama:/root/.ollama
     networks: [interna]

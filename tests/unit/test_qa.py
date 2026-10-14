@@ -13,7 +13,7 @@ def setup(min_score: float = 0.3):
         3: "as inscricoes estarao abertas ate 15 de outubro",
         7: "a taxa de inscricao custa cem reais",
     }
-    vectors = embeddings.embed(list(texts.values()))
+    vectors = embeddings.embed_documents(list(texts.values()))
     repo.add_chunks(
         doc.id, [NewChunk(p, t, v) for (p, t), v in zip(texts.items(), vectors, strict=True)]
     )
@@ -40,6 +40,30 @@ def test_abaixo_do_limiar_nao_chama_o_llm():
     assert answer.answer == NOT_FOUND_ANSWER
     assert answer.sources == []
     assert llm.prompts == []
+
+
+def test_recusa_do_llm_nao_devolve_fontes():
+    repo, llm, qa, _ = setup()
+    llm.answer = "Não encontrei essa informação nos documentos enviados."
+
+    answer = qa.ask("ate quando vao as inscricoes")
+
+    assert answer.sources == []
+    assert llm.prompts  # o LLM foi chamado: o limiar deixou passar
+    assert repo.questions[-1].sources == []
+    assert repo.questions[-1].model == "fake-llm"
+
+
+def test_resposta_valida_que_cita_a_frase_de_recusa_mantem_as_fontes():
+    _, llm, qa, _ = setup()
+    llm.answer = (
+        "As inscrições vão até 15 de outubro [1]. "
+        "Não encontrei essa informação nos documentos enviados."
+    )
+
+    answer = qa.ask("ate quando vao as inscricoes")
+
+    assert answer.sources
 
 
 def test_toda_pergunta_e_gravada_no_historico():

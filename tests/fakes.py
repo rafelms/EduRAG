@@ -27,12 +27,17 @@ class FakeEmbeddings(EmbeddingsPort):
     próximos, textos sem nada em comum ficam ortogonais."""
 
     def __init__(self) -> None:
-        self.calls: list[list[str]] = []
+        self.calls: list[list[str]] = []  # lotes de documentos
+        self.queries: list[str] = []
         self.available = True
 
-    def embed(self, texts: list[str]) -> list[list[float]]:
+    def embed_documents(self, texts: list[str]) -> list[list[float]]:
         self.calls.append(texts)
         return [self._vector(t) for t in texts]
+
+    def embed_query(self, text: str) -> list[float]:
+        self.queries.append(text)
+        return self._vector(text)
 
     def ping(self) -> None:
         if not self.available:

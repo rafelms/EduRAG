@@ -12,10 +12,15 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     llm_model: str = "qwen2.5:3b"
     embedding_model: str = "nomic-embed-text"
+    # Prefixos do nomic-embed-text; deixe vazio para modelos que não usam.
+    embedding_document_prefix: str = "search_document: "
+    embedding_query_prefix: str = "search_query: "
     llm_timeout_seconds: float = 300.0
+    # Janela de contexto enviada ao Ollama; o padrão dele (~4k tokens) corta o prompt.
+    llm_num_ctx: int = 8192
 
     # Limiar mínimo de similaridade (cosseno) para chamar o LLM.
-    min_score: float = 0.5
+    min_score: float = 0.3
     max_upload_mb: int = 20
 
     # Tamanho dos trechos, em palavras (aproximação de tokens).

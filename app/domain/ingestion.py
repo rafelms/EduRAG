@@ -65,7 +65,9 @@ class IngestionService:
     def _embed_all(self, texts: list[str]) -> list[list[float]]:
         vectors: list[list[float]] = []
         for start in range(0, len(texts), self._batch_size):
-            vectors.extend(self._embeddings.embed(texts[start : start + self._batch_size]))
+            vectors.extend(
+                self._embeddings.embed_documents(texts[start : start + self._batch_size])
+            )
         return vectors
 
     def _fail(self, document_id: UUID, reason: str) -> None:

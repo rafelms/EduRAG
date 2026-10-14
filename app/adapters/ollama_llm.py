@@ -6,8 +6,11 @@ from app.ports.llm import LLMPort
 
 
 class OllamaLLM(LLMPort):
-    def __init__(self, base_url: str, model: str, timeout: float = 300.0) -> None:
+    def __init__(
+        self, base_url: str, model: str, timeout: float = 300.0, num_ctx: int = 8192
+    ) -> None:
         self._model = model
+        self._num_ctx = num_ctx
         # Em CPU a geração é lenta, por isso o timeout generoso.
         self._client = httpx.Client(base_url=base_url, timeout=timeout)
 
@@ -22,7 +25,7 @@ class OllamaLLM(LLMPort):
                 "model": self._model,
                 "prompt": prompt,
                 "stream": False,
-                "options": {"temperature": 0.1},
+                "options": {"temperature": 0.1, "num_ctx": self._num_ctx},
             },
         )
         response.raise_for_status()

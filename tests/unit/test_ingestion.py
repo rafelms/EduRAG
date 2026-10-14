@@ -49,7 +49,7 @@ def test_arquivo_corrompido_vira_erro_sem_levantar():
 
 def test_falha_nos_embeddings_vira_erro():
     repo, embeddings, service = build()
-    embeddings.embed = lambda texts: (_ for _ in ()).throw(ConnectionError("ollama fora"))
+    embeddings.embed_documents = lambda texts: (_ for _ in ()).throw(ConnectionError("ollama fora"))
     doc = repo.create_document("a.pdf")
 
     service.ingest(doc.id, make_pdf(["texto qualquer"]))

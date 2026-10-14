@@ -71,7 +71,10 @@ Se a melhor similaridade ficar abaixo de `MIN_SCORE`, a API responde que não en
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | endereço do Ollama |
 | `LLM_MODEL` | `qwen2.5:3b` | modelo de geração |
 | `EMBEDDING_MODEL` | `nomic-embed-text` | modelo de embeddings (768 dimensões) |
-| `MIN_SCORE` | `0.5` | limiar de similaridade para chamar o LLM |
+| `MIN_SCORE` | `0.3` | limiar de similaridade para chamar o LLM |
+| `EMBEDDING_DOCUMENT_PREFIX` / `EMBEDDING_QUERY_PREFIX` | `search_document: ` / `search_query: ` | prefixos do `nomic-embed-text`; vazios para outros modelos |
+| `LLM_NUM_CTX` | `8192` | janela de contexto do LLM, em tokens |
+| `LLM_TIMEOUT_SECONDS` | `300` | tempo máximo de uma geração |
 | `MAX_UPLOAD_MB` | `20` | tamanho máximo do PDF |
 | `CHUNK_SIZE` / `CHUNK_OVERLAP` | `800` / `100` | tamanho e sobreposição dos trechos (palavras) |
 | `LOG_LEVEL` | `INFO` | nível dos logs JSON |

@@ -52,6 +52,16 @@ def build_services(settings: Settings) -> Services:
     return assemble_services(
         settings,
         repository=PgDocumentRepository(create_session_factory(engine)),
-        embeddings=OllamaEmbeddings(settings.ollama_base_url, settings.embedding_model),
-        llm=OllamaLLM(settings.ollama_base_url, settings.llm_model, settings.llm_timeout_seconds),
+        embeddings=OllamaEmbeddings(
+            settings.ollama_base_url,
+            settings.embedding_model,
+            document_prefix=settings.embedding_document_prefix,
+            query_prefix=settings.embedding_query_prefix,
+        ),
+        llm=OllamaLLM(
+            settings.ollama_base_url,
+            settings.llm_model,
+            settings.llm_timeout_seconds,
+            num_ctx=settings.llm_num_ctx,
+        ),
     )
