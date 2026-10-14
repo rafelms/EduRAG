@@ -28,7 +28,7 @@ Cada requisito só está pronto quando o critério de aceitação passa em teste
 | RF03 | Listar e consultar documentos | Lista com nome, status, nº de páginas e data; detalhe por id; id inexistente → `404`. |
 | RF04 | Excluir documento | Remove o documento e todos os seus trechos; responde `204`. |
 | RF05 | Fazer uma pergunta | Recebe a pergunta e, opcionalmente, os ids dos documentos; devolve resposta + fontes (documento, página, trecho, score). |
-| RF06 | Responder "não encontrei" | Se o melhor trecho ficar abaixo do limiar de similaridade, responde que não encontrou a informação **sem chamar o LLM**. |
+| RF06 | Responder "não encontrei" | Se o melhor trecho ficar abaixo do limiar de similaridade, responde que não encontrou a informação **sem chamar o LLM**. O limiar é conservador (ver "Limitação conhecida"): a maioria das recusas vem do próprio LLM, guiado pelo prompt, e nesse caso a resposta não traz fontes. |
 | RF07 | Guardar histórico | Toda pergunta grava pergunta, resposta, fontes, modelo usado e latência em ms; listagem paginada. |
 | RF08 | Informar saúde | `/health` responde `200` se o processo está vivo; `/ready` só responde `200` se banco e Ollama respondem. |
 
@@ -127,6 +127,20 @@ edurag/
 ├── pyproject.toml
 └── README.md
 ```
+
+### Decisões registradas durante a construção
+
+Mudanças feitas depois da versão 1.0, registradas aqui antes do código (regra 5 da seção 9).
+
+| Data | Decisão | Motivo |
+| --- | --- | --- |
+| 14/10/2026 | `EmbeddingsPort` ganha `embed_documents` e `embed_query` no lugar de `embed`. O adaptador Ollama aplica prefixos configuráveis (`EMBEDDING_DOCUMENT_PREFIX`, `EMBEDDING_QUERY_PREFIX`; padrão `search_document: ` e `search_query: `, o formato do `nomic-embed-text`). Modelos sem prefixo usam valor vazio. | O `nomic-embed-text` foi treinado com esses prefixos; medido num documento real, o score de uma pergunta genérica subiu de 0,489 para 0,548. Documentos e perguntas têm papéis diferentes, e a porta passa a expressar isso. |
+| 14/10/2026 | Nova variável `LLM_NUM_CTX` (padrão 8192), enviada ao Ollama como `options.num_ctx`. | O padrão do Ollama é uma janela pequena (cerca de 4 mil tokens). Com trechos de ~800 palavras e `top_k=5`, o prompt passa disso e o Ollama corta o excesso em silêncio, podendo perder as instruções. |
+| 14/10/2026 | `MIN_SCORE` padrão passa de 0,5 para 0,45, a ser recalibrado com mais documentos. | Medido: perguntas válidas sobre um PDF real ficaram entre 0,49 e 0,62 e uma pergunta fora do tema ficou em 0,50 a 0,54; com 0,5 fixo, perguntas genéricas legítimas eram recusadas. O prompt já instrui o LLM a dizer "não encontrei" quando o contexto não responde. Observação posterior (com prefixos, edital de teste): relevantes 0,65 a 0,68 e fora do tema 0,60; o limiar não separa bem, então a recusa depende do prompt. |
+| 14/10/2026 | **Limitação conhecida do limiar (alternativa 1 aceita).** O `MIN_SCORE` fica como está e o RF06 passa a disparar só em casos extremos; a recusa de perguntas fora do tema é feita pelo LLM, guiado pelo prompt. Quando o LLM recusa, a resposta volta com `sources` vazio. | Com o `nomic-embed-text` em português, o score de perguntas fora do tema (~0,60) se sobrepõe ao de perguntas relevantes (0,49 a 0,68); nenhum corte fixo separa os dois grupos. Custo assumido: uma chamada ao LLM por recusa e dependência de o modelo obedecer ao prompt. Revisitar com `bge-m3` ou reranker se o uso crescer. |
+| 14/10/2026 | `MIN_SCORE` padrão de 0,45 para 0,3, para cumprir a alternativa 1 (limiar só em casos extremos). | Medido no currículo reenviado: "Do que se trata este documento?" teve 0,44 e foi recusada pelo limiar, enquanto "receita de bolo" teve 0,50 a 0,56 e passou. Com 0,45 o limiar recusava perguntas legítimas e deixava passar as fora do tema. |
+| 14/10/2026 | Prompt reescrito em regras numeradas: só fatos do contexto; perguntas sobre o assunto do documento são válidas; pedidos de receitas, hipóteses, opiniões, textos criativos, "como ele faria" ou "imagine que" recebem a frase de recusa. A recusa só remove as fontes quando a resposta é exatamente a frase de recusa. | Com o prompt antigo, "Dado que Rafael é desenvolvedor, como ele diria uma receita de bolo?" gerou uma resposta inventada, citando o currículo. O prompt novo recusa esse caso e mantém as respostas legítimas (comparação lado a lado com a mesma busca). |
+| 14/10/2026 | Trocar o modelo de embeddings por um multilíngue (ex.: `bge-m3`, 1024 dimensões) fica como alternativa, só se a separação dos scores continuar fraca. | Exigiria migration nova da coluna `embedding` e reindexação de todos os documentos. |
 
 ---
 

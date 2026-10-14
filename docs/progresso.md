@@ -1,79 +1,119 @@
 # EduRAG: progresso
 
-> Sessão de 13/10/2026. Referência: [spec.md](spec.md).
+> Atualizado em 14/10/2026. Referência: [spec.md](spec.md).
 
 ## Resumo
 
-A **Camada A** (seções 2 a 7 da spec) foi implementada por completo, de T1 a T10. A **Camada B** (seção 8) não foi iniciada: pela regra da spec, ela é escrita por você.
+- **Camada A (aplicação):** implementada e **validada ponta a ponta** com PostgreSQL + pgvector e Ollama reais (`qwen2.5:3b` e `nomic-embed-text`).
+- **Qualidade da recuperação:** funciona, mas o limiar `MIN_SCORE` **não separa bem** perguntas do tema e fora do tema com esse modelo de embeddings (detalhes abaixo). Decisão tomada: aceitar a limitação e documentá-la na spec; quem segura as perguntas fora do tema é o prompt, não o limiar.
+- **Camada B (operação):** não iniciada. Pela regra da spec, você escreve; a IA explica e revisa.
 
 ## O que foi feito
 
 ### Tarefas da seção 7
 
-| Tarefa | Status | Onde está | Como foi verificado |
-| --- | --- | --- | --- |
-| T1: Esqueleto | Feita | `pyproject.toml`, `app/main.py`, `app/config.py`, `app/logging_config.py` | `/health` responde 200 nos testes |
-| T2: Containers | Feita, falta validar a stack completa | `Dockerfile`, `docker-compose.yml`, `.env.example`, `scripts/pull-models.sh` | build da imagem ok, roda como `edurag` (não-root) |
-| T3: Banco | Feita | `app/db/models.py`, `app/db/migrations/versions/0001_initial.py` | migration roda limpa num Postgres + pgvector vazio |
-| T4: Portas e adaptadores | Feita | `app/ports/`, `app/adapters/`, `tests/fakes.py`, `/ready` | `/ready` dá 200 com tudo de pé e 503 `["ollama"]` com o Ollama falso desligado |
-| T5: Chunking | Feita | `app/domain/chunking.py` | testes de texto curto, texto longo, página vazia, limites e parâmetros inválidos |
-| T6: Documentos | Feita, falta validar com Ollama real | `app/api/routes_documents.py`, `app/domain/ingestion.py` | upload → `pronto` → trechos no Postgres (com embeddings falsos) |
-| T7: Perguntas | Feita, falta validar com Ollama real | `app/api/routes_ask.py`, `app/domain/qa.py`, `app/domain/prompts.py` | página certa na fonte; "não encontrei" sem chamar o LLM |
-| T8: Histórico | Feita | `GET /questions` | paginação, ordem e latência testadas |
-| T9: Testes de integração | Feita | `tests/integration/` | 46 testes passando contra Postgres real; cobertura de `domain/` em 99% |
-| T10: README | Feita | `README.md` | não testado por outra pessoa |
+| Tarefa | Status | Onde está |
+| --- | --- | --- |
+| T1: Esqueleto | Feita | `pyproject.toml`, `app/main.py`, `app/config.py`, `app/logging_config.py` |
+| T2: Containers | Feita e validada | `Dockerfile`, `docker-compose.yml`, `.env.example`, `scripts/pull-models.sh` |
+| T3: Banco | Feita e validada | `app/db/models.py`, `app/db/migrations/versions/0001_initial.py` |
+| T4: Portas e adaptadores | Feita e validada | `app/ports/`, `app/adapters/`, `tests/fakes.py`, `/ready` |
+| T5: Chunking | Feita | `app/domain/chunking.py` |
+| T6: Documentos | Feita e validada com PDF real | `app/api/routes_documents.py`, `app/domain/ingestion.py` |
+| T7: Perguntas | Feita e validada com PDF real | `app/api/routes_ask.py`, `app/domain/qa.py`, `app/domain/prompts.py` |
+| T8: Histórico | Feita | `GET /questions` |
+| T9: Testes de integração | Feita | `tests/integration/` |
+| T10: README | Feita | `README.md` |
 
-### Requisitos funcionais
+### O que foi testado
 
-Os requisitos RF01 a RF08 estão implementados e têm teste automatizado.
+**Automatizado** (`uv run pytest`): 49 testes, sendo 35 sem banco e 14 contra PostgreSQL real quando `TEST_DATABASE_URL` está definida. Na última rodada completa com Postgres, 46 passaram; os 3 testes novos dos adaptadores rodam sem banco. Cobertura de `domain/`: 99%. `ruff check` e `ruff format` limpos.
 
-### Requisitos não funcionais
+**Manual, com a stack completa** (Docker Compose, Ollama real):
 
-| Requisito | Situação |
+| Teste | Resultado |
 | --- | --- |
-| Configuração 100% por env | Feito (`pydantic-settings`); `.env.example` sem valores reais |
-| Logs JSON com `request_id`, sem conteúdo dos PDFs | Feito; há um teste que garante que o texto do PDF não aparece nos logs |
-| LLM, embeddings e banco atrás de portas | Feito; o domínio não importa nenhum adaptador |
-| pytest com fakes, cobertura ≥ 70% em `domain/` | Feito (99%) |
-| ruff e type hints | Feito; `ruff check` e `ruff format` limpos |
-| Imagem slim, multi-stage, não-root | Feito |
-| Respostas em português | Feito via prompt; não validado com o modelo real |
+| Postgres não subia com `POSTGRES_PASSWORD` vazio | Causa encontrada; o compose agora recusa subir sem a senha, com mensagem clara |
+| `/health` e `/ready` | 200 com tudo de pé |
+| Upload de um currículo em PDF | `202`, depois `pronto`, 1 página, 1 trecho (~3.300 caracteres) |
+| `/ask` "Do que se trata este documento?" nesse currículo | Respondeu "não encontrei": score 0,489, abaixo do `MIN_SCORE` 0,5 da época |
+| Upload de um edital de teste de 3 páginas | `pronto`; fontes apontam para a página certa |
+| Pergunta específica ("Até quando vão as inscrições?") | Resposta correta, citando a fonte `[1]`, fonte na página 2 (score 0,68) |
+| Pergunta genérica ("Do que se trata este documento?") | Resposta correta (score 0,65 na página 1) |
+| Pergunta fora do tema ("receita de bolo") | O LLM respondeu "Não encontrei...", mas o score do melhor trecho foi 0,60, acima do limiar |
+| `DELETE /documents/{id}` | `204` |
 
-### Decisões tomadas durante a implementação
+### Mudanças feitas a partir dos testes (14/10/2026)
 
-Estas decisões não estavam explícitas na spec. A regra 5 da spec pede para registrá-las nela.
+Registradas em [spec.md](spec.md), na seção "Decisões registradas durante a construção".
 
-1. **Tokens contados como palavras.** Os trechos têm 800 palavras com sobreposição de 100, configuráveis por `CHUNK_SIZE` e `CHUNK_OVERLAP`. Um trecho nunca cruza duas páginas, para que a citação seja sempre exata.
-2. **`app/container.py`.** É um arquivo novo, fora da estrutura da spec. É ali que as portas são ligadas aos adaptadores (composition root), e é o que permite aos testes injetar os fakes.
-3. **Score.** O score é a similaridade de cosseno (`1 - distância`). A busca só considera documentos com status `pronto`.
-4. **Pergunta sem resposta.** Quando a resposta é "não encontrei", o histórico grava `model = "nenhum"` e a lista de fontes vazia.
-5. **`/ask` com Ollama fora do ar.** A rota responde `502`. Isso não estava na spec.
-6. **Formato de `/questions`.** A resposta é `{items, total, limit, offset}`, com `limit` até 100.
-7. **Validação do upload.** O nome do arquivo precisa terminar em `.pdf` e o conteúdo precisa começar com `%PDF-`; senão a resposta é `400`. O limite de tamanho é lido só até `MAX_UPLOAD_MB + 1` byte.
-8. **Migrations na subida.** O container roda `alembic upgrade head` antes de iniciar o uvicorn.
-9. **Testes de API em dois modos.** Eles rodam sempre com um repositório em memória. Com `TEST_DATABASE_URL` definida, rodam também contra o Postgres. Nesse modo os testes apagam os dados das tabelas.
+1. **Prefixos do `nomic-embed-text`.** `EmbeddingsPort` agora tem `embed_documents` e `embed_query`; o adaptador aplica os prefixos `search_document: ` e `search_query: ` (configuráveis, vazios para outros modelos).
+2. **`LLM_NUM_CTX` (8192).** O Ollama cortava o prompt em silêncio na janela padrão (~4k tokens), e um trecho de 800 palavras já ocupa cerca de 1.200 tokens.
+3. **`MIN_SCORE` de 0,5 para 0,45, e depois para 0,3.** Ver a ressalva e a seção sobre alucinação logo abaixo.
+4. **`LLM_TIMEOUT_SECONDS` exposta no compose** e no `.env.example`.
+5. **Validação do compose:** `POSTGRES_PASSWORD` passou a ser obrigatória.
+6. **`# syntax=` removido do Dockerfile.** Ele forçava uma consulta ao registry em todo build e quebrava sem internet; nada no Dockerfile depende dele.
+
+### Achado importante: o limiar não separa por relevância
+
+Medido com o Ollama real:
+
+| Pergunta (edital de teste) | Melhor score com prefixos |
+| --- | --- |
+| Do que se trata este documento? | 0,65 |
+| Até quando vão as inscrições? | 0,68 |
+| Receita de bolo de cenoura (fora do tema) | **0,60** |
+
+Os prefixos subiram todos os scores, inclusive o de fora do tema, então a distância entre "relevante" e "irrelevante" continua pequena. Nenhum `MIN_SCORE` fixo separa os dois casos sem recusar perguntas genéricas legítimas. Hoje o sistema funciona porque o prompt manda o LLM responder "não encontrei" quando o contexto não tem a resposta, mas isso custa uma chamada ao LLM (lenta em CPU) e o RF06 ("sem chamar o LLM") só vale para scores baixos.
+
+### Alucinação com pergunta hipotética (14/10/2026)
+
+**Caso:** no currículo reenviado, a pergunta "Dado que Rafael Menezes é um desenvolvedor de software, como ele diria uma receita de bolo?" gerou uma resposta inventada (passos de "modelagem de dados", Spring, React...), citando o currículo como fonte.
+
+**Por quê:** a pergunta menciona o dono do currículo, então a busca encontrou o currículo (score 0,56) e o limiar deixou passar. O prompt antigo só dizia "use somente o contexto"; o `qwen2.5:3b` tratou o pedido como tarefa criativa e usou o currículo como "inspiração". É um caso parecido com prompt injection: a pergunta empurra o modelo para fora do papel.
+
+**O que foi feito:**
+
+1. **Prompt em regras numeradas** (`app/domain/prompts.py`): só fatos do contexto; perguntas sobre o assunto do documento são válidas; pedidos de receitas, hipóteses, opiniões, textos criativos, "como ele faria" ou "imagine que" recebem a frase de recusa.
+2. **Detecção de recusa mais estrita** (`app/domain/qa.py`): as fontes só são removidas quando a resposta é exatamente a frase de recusa. Uma primeira versão removia as fontes de respostas válidas que tinham a frase no final; isso foi corrigido e ganhou teste.
+3. **`MIN_SCORE` padrão para 0,3.** No currículo reenviado, "Do que se trata este documento?" teve 0,44 e era recusada pelo limiar, enquanto as perguntas sobre bolo tinham 0,50 a 0,56. Com 0,3 o limiar fica só para os casos extremos, como a alternativa 1 decidiu.
+
+**Resultado pela API (com `MIN_SCORE=0,3`):**
+
+| Pergunta | Antes | Depois |
+| --- | --- | --- |
+| "...como ele diria uma receita de bolo?" | resposta inventada, com fonte | recusa, sem fontes |
+| Do que se trata este documento? | recusa (limiar) | resposta correta, com fonte |
+| Quais tecnologias Rafael domina? | resposta correta | resposta correta |
+| Onde Rafael mora? | recusa | recusa (ver abaixo) |
+
+**Limitações que continuam:**
+
+- "Onde Rafael mora?" é recusada com os dois prompts, mesmo com a cidade escrita no currículo. O documento diz "Palmas, Tocantins" no cabeçalho, sem a palavra "mora", e o modelo de 3B não faz essa ligação. É limite do modelo, não do prompt.
+- Um prompt reduz a alucinação, mas não a elimina: um modelo pequeno ainda pode ser convencido por perguntas mais elaboradas. A defesa de verdade é o item da F5 (defesa contra prompt injection e avaliação com Ragas).
 
 ## O que falta
 
 ### Para fechar a Camada A
 
-- [ ] **Validar a stack completa.** Rodar `docker compose up -d --build` e depois `./scripts/pull-models.sh`. Esse teste não foi feito porque baixa vários GB.
-- [ ] **T6 com dados reais.** Enviar um PDF real e confirmar que ele chega a `pronto` com embeddings do `nomic-embed-text`.
-- [ ] **T7 com dados reais.** Confirmar que uma pergunta sobre o PDF traz a página certa e que uma pergunta fora do tema dá "não encontrei".
-- [ ] **Calibrar `MIN_SCORE`.** O valor padrão é 0.5, um chute. Ajuste olhando os scores reais.
-- [ ] **Medir a latência do `qwen2.5:3b` em CPU.** Se passar de 300 s, aumente `LLM_TIMEOUT_SECONDS`.
-- [ ] **Gerar o `uv.lock`.** Rode `uv sync` e versione o arquivo. O `uv` não estava instalado na sessão.
-- [ ] **Git.** Rodar `git init`, fazer o primeiro commit e, de preferência, um commit por tarefa como a spec pede.
-- [ ] **Atualizar a spec.** Registrar nela as decisões da seção anterior.
-- [ ] **Pinar a versão do Ollama.** O `docker-compose.yml` usa `ollama/ollama:latest`; vale fixar uma versão.
+- [x] **Limiar: alternativa 1 aceita (14/10/2026).** `MIN_SCORE` reduzido para 0,3 (limiar só em casos extremos), RF06 reescrito na spec ("Limitação conhecida") e fontes omitidas quando o próprio LLM recusa. Alternativas futuras: modelo multilíngue (`bge-m3`, exige migration e reindexação) ou reranker.
+- [ ] **Trechos menores.** Testar `CHUNK_SIZE=300`, que costuma dar vetores mais focados. Exige reenviar os PDFs.
+- [x] **Currículo antigo apagado** e reenviado com os vetores novos (com prefixos).
+- [x] **`MIN_SCORE=0.3` no `.env`**; validado pela API (pergunta hipotética recusada, "Do que se trata" respondida).
+- [ ] **Medir a latência real** do `qwen2.5:3b` na sua máquina e ajustar `LLM_TIMEOUT_SECONDS`.
+- [x] **Mudanças commitadas** em commits separados por assunto (14/10/2026).
+- [ ] **Atualizar o README** com a observação sobre prefixos e reenvio de PDFs, se quiser.
+- [ ] **Pinar a versão do Ollama** no `docker-compose.yml` (hoje `latest`).
 - [ ] **Revisar o código.** Leia e entenda cada arquivo antes de considerar a Camada A sua.
 
 ### Camada B (você aplica)
 
-- [ ] **F2: Pipeline segura.** GitHub Actions com ruff, pytest (com o serviço Postgres para `TEST_DATABASE_URL`), Semgrep ou Bandit, Trivy, gitleaks, Dependabot e proteção de branch.
+Ordem sugerida na spec. Cada fase já tem o ponto de encaixe pronto na aplicação.
+
+- [ ] **F2: Pipeline segura.** GitHub Actions com ruff, pytest (serviço Postgres para `TEST_DATABASE_URL`), Semgrep ou Bandit, Trivy, gitleaks, Dependabot e proteção de branch. O repositório já está no GitHub: `rafelms/EduRAG`.
 - [ ] **F3: Segredos e acesso.** SOPS ou Vault, API key ou JWT (middleware em `app/api/`) e rate limiting.
 - [ ] **F4: Observabilidade.** `/metrics` para Prometheus, Grafana, Loki e OpenTelemetry. O `request_id` e os logs JSON já existem.
-- [ ] **F5: LLMOps.** Langfuse em `app/adapters/ollama_llm.py`, Ragas na CI, defesa contra prompt injection em `app/domain/prompts.py`, mascaramento de CPF e e-mail e custo em tokens.
+- [ ] **F5: LLMOps.** Langfuse em `app/adapters/ollama_llm.py`, Ragas na CI (o conjunto de perguntas de referência serve também para calibrar o limiar), defesa contra prompt injection em `app/domain/prompts.py`, mascaramento de CPF e e-mail e custo em tokens.
 - [ ] **F6: Kubernetes.** k3s ou kind, manifests e Helm; `/health` e `/ready` viram as probes.
 - [ ] **F7 (opcional): Nuvem e IaC.** Terraform.
 
@@ -81,8 +121,7 @@ Estas decisões não estavam explícitas na spec. A regra 5 da spec pede para re
 
 ```bash
 uv sync
-uv run pytest                     # unitários + API em memória
-docker compose up -d postgres
-TEST_DATABASE_URL=postgresql+psycopg://edurag:<senha>@localhost:5432/<banco_de_teste> \
-  uv run pytest --cov=app/domain  # inclui Postgres real
+uv run pytest                      # unitários + API em memória
+docker compose up -d --build       # stack completa
+./scripts/pull-models.sh           # só na primeira vez
 ```
