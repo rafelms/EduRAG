@@ -32,10 +32,16 @@ class Answer:
     sources: list[Source]
 
 
+# Modelos pequenos variam a frase de recusa (pontuação, aspas, "no documento",
+# citação [1] no fim). Tratamos como recusa uma resposta curta que começa assim.
+_REFUSAL_PREFIX = "não encontrei"
+_REFUSAL_MAX_CHARS = 120
+
+
 def _is_refusal(answer: str) -> bool:
-    """O LLM respondeu só a frase de recusa do prompt (e não uma resposta que a cite)."""
-    normalized = answer.strip().strip("\"'").strip().rstrip(".").lower()
-    return normalized == NOT_FOUND_ANSWER.rstrip(".").lower()
+    """O LLM recusou, em vez de dar uma resposta (que pode até citar a frase de recusa)."""
+    normalized = " ".join(answer.lower().split()).strip("\"'“”. ")
+    return normalized.startswith(_REFUSAL_PREFIX) and len(normalized) <= _REFUSAL_MAX_CHARS
 
 
 def _to_source(chunk: ScoredChunk) -> Source:
@@ -77,8 +83,12 @@ class QAService:
             answer_text = self._llm.generate(build_qa_prompt(question, chunks)).strip()
             model = self._llm.model_name
             # O limiar é frouxo (ver spec, RF06): muitas recusas vêm do próprio LLM.
-            # Nesse caso as fontes seriam enganosas, pois não sustentam resposta nenhuma.
-            sources = [] if _is_refusal(answer_text) else [_to_source(c) for c in chunks]
+            # Nesse caso as fontes seriam enganosas, pois não sustentam resposta nenhuma,
+            # e a frase é padronizada para não sobrar uma citação solta como "[1]".
+            if _is_refusal(answer_text):
+                answer_text, sources = NOT_FOUND_ANSWER, []
+            else:
+                sources = [_to_source(c) for c in chunks]
 
         latency_ms = int((time.perf_counter() - started) * 1000)
         record = self._repository.save_question(

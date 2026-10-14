@@ -1,3 +1,5 @@
+import pytest
+
 from app.domain.prompts import NOT_FOUND_ANSWER
 from app.domain.qa import QAService
 from app.ports.repository import DocumentStatus, NewChunk
@@ -52,6 +54,38 @@ def test_recusa_do_llm_nao_devolve_fontes():
     assert llm.prompts  # o LLM foi chamado: o limiar deixou passar
     assert repo.questions[-1].sources == []
     assert repo.questions[-1].model == "fake-llm"
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        "Não encontrei essa informação nos documentos enviados.",
+        "  NÃO ENCONTREI essa informação nos documentos enviados\n",
+        '"Não encontrei essa informação nos documentos enviados."',
+        "Não encontrei  essa informação\nnos documentos enviados.",
+        "Não encontrei essa informação no documento",
+        "Não encontrei essa informação nos documentos enviados. [1]",
+        "“Não encontrei essa informação.”",
+    ],
+)
+def test_variacoes_da_recusa_nao_devolvem_fontes(refusal):
+    _, llm, qa, _ = setup()
+    llm.answer = refusal
+
+    answer = qa.ask("ate quando vao as inscricoes")
+
+    assert answer.sources == []
+    assert answer.answer == NOT_FOUND_ANSWER  # padronizada, sem "[1]" solto
+
+
+def test_resposta_longa_que_comeca_com_nao_encontrei_mantem_as_fontes():
+    _, llm, qa, _ = setup()
+    llm.answer = (
+        "Não encontrei a data exata da homologação, mas o edital informa que as "
+        "inscrições estarão abertas até 15 de outubro e que a taxa custa cem reais [1][2]."
+    )
+
+    assert qa.ask("ate quando vao as inscricoes").sources
 
 
 def test_resposta_valida_que_cita_a_frase_de_recusa_mantem_as_fontes():
