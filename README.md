@@ -29,11 +29,11 @@ Pré-requisitos: Docker com Compose.
 
 ```bash
 cp .env.example .env          # defina POSTGRES_PASSWORD
-docker compose up -d --build  # sobe api, postgres e ollama
+docker compose up -d --build  # sobe web, api, postgres e ollama
 ./scripts/pull-models.sh      # baixa os modelos (uma vez; alguns GB)
 ```
 
-Swagger em <http://localhost:8000/docs>. Confira a saúde:
+Interface web em <http://localhost:8080> e Swagger em <http://localhost:8000/docs>. Confira a saúde:
 
 ```bash
 curl localhost:8000/health   # {"status":"ok"}
@@ -96,3 +96,14 @@ TEST_DATABASE_URL=postgresql+psycopg://edurag:<senha>@localhost:5432/edurag \
 ```
 
 Os testes de integração truncam as tabelas do banco indicado: aponte para um banco de teste.
+
+### Frontend
+
+React + Vite + Tailwind em `frontend/`, fora do escopo da spec. Chama a API por `/api/*`: no desenvolvimento o Vite repassa para `localhost:8000`; no container, o nginx repassa para o serviço `api` (mesma origem, sem CORS).
+
+```bash
+cd frontend
+npm install
+npm run dev     # http://localhost:5173, com a API rodando em localhost:8000
+npm run build && npm run lint
+```

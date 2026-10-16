@@ -1,11 +1,12 @@
 # EduRAG: progresso
 
-> Atualizado em 14/10/2026. Referência: [spec.md](spec.md).
+> Atualizado em 16/10/2026. Referência: [spec.md](spec.md).
 
 ## Resumo
 
 - **Camada A (aplicação):** implementada e **validada ponta a ponta** com PostgreSQL + pgvector e Ollama reais (`qwen2.5:3b` e `nomic-embed-text`). Falta só a sua revisão do código.
 - **Qualidade da recuperação:** funciona, mas o limiar `MIN_SCORE` **não separa bem** perguntas do tema e fora do tema com esse modelo de embeddings (detalhes abaixo). Decisão tomada: aceitar a limitação e documentá-la na spec; quem segura as perguntas fora do tema é o prompt, não o limiar.
+- **Frontend (fora da spec, 16/10/2026):** interface React + Tailwind em `frontend/`, servida por nginx no compose (porta 8080), pensada para o deploy na AWS. Validada ponta a ponta pelo proxy; o visual ainda não foi conferido em navegador.
 - **Camada B (operação):** não iniciada. Pela regra da spec, você escreve; a IA explica e revisa.
 
 ## O que foi feito
@@ -104,6 +105,55 @@ Os prefixos subiram todos os scores, inclusive o de fora do tema, então a dist�
 | `str.format` com chaves `{}` no texto do PDF | **Sem problema:** `format` não reinterpreta os valores substituídos |
 | Falha do Ollama no `/ask` devolve 502, mas a pergunta não vai para o histórico | **Aceito** para a Camada A; vira métrica de erro na F4 |
 
+### Frontend web (16/10/2026, fora da spec)
+
+A spec não prevê interface; ela foi criada para o deploy na AWS. O backend não mudou.
+
+**Stack:** React 19 + Vite + Tailwind 4 + TypeScript, em `frontend/`. Sem bibliotecas além dessas.
+
+**Telas:**
+
+- **Documentos:** upload por clique ou arraste (vários PDFs), status atualizado a cada 3 s enquanto algum está em `processando`, exclusão com confirmação. Documentos prontos podem ser marcados para restringir a busca (`document_ids`); sem marcação, usa todos.
+- **Perguntar:** contador até 2000 caracteres (mesmo limite do `AskRequest`), ajuste de `top_k` (1 a 20), cronômetro durante a geração. A resposta mostra as fontes com arquivo, página, similaridade em % e o trecho.
+- **Histórico:** `GET /questions`, 10 por página.
+- **Cabeçalho:** consulta `/ready` a cada 30 s e mostra qual componente caiu.
+
+**Como fala com a API:** o frontend sempre chama `/api/*`. No desenvolvimento, o proxy do Vite repassa para `localhost:8000`; no container, o nginx repassa para `http://api:8000/` (tirando o `/api`). Mesma origem, então a API não precisa de CORS. Se um dia a API ficar em outro domínio, `VITE_API_BASE_URL` muda a base no build, e aí sim é preciso habilitar CORS na API.
+
+**Arquivos:**
+
+| Arquivo | Papel |
+| --- | --- |
+| `frontend/src/api.ts` | cliente e tipos, espelhando `app/api/schemas.py`; traduz o `detail` do FastAPI (texto ou lista de validação) em mensagem |
+| `frontend/src/useDocuments.ts` | lista de documentos com polling durante o processamento |
+| `frontend/src/components/` | `DocumentsPanel`, `AskPanel`, `HistoryPanel`, `SourceList`, `StatusIndicator` |
+| `frontend/nginx.conf` | serve o build, fallback para `index.html`, proxy de `/api/` |
+| `frontend/Dockerfile` | build em `node:24-alpine`, runtime em `nginx-unprivileged` (sem root, porta 8080) |
+| `docker-compose.yml` | novo serviço `web`, porta `${WEB_PORT:-8080}` |
+
+**Ajustes do nginx ligados à API:**
+
+- `proxy_read_timeout 330s`: a geração pode levar até `LLM_TIMEOUT_SECONDS` (300 s). Sem isso, o padrão de 60 s do nginx cortaria as respostas lentas com 504.
+- `client_max_body_size 25m`: acima do `MAX_UPLOAD_MB` (20), para o 413 vir da API, com a mensagem dela, e não do nginx.
+
+**O que foi testado (stack completa, Ollama real):**
+
+| Teste | Resultado |
+| --- | --- |
+| `npm run build` e `npm run lint` (oxlint) | limpos, sem avisos |
+| `GET /` e rota inexistente (`/qualquer`) pelo nginx | 200 nos dois (fallback da SPA) |
+| `/api/ready` e `/api/documents` pelo proxy | 200, mesmos dados da API direta |
+| Upload de `.txt` pelo proxy | 400 "Apenas arquivos PDF são aceitos." |
+| Pergunta vazia | 422 com lista de validação; o frontend mostra "a pergunta não pode ser vazia" |
+| "Qual a formação acadêmica?" no currículo | resposta correta com fonte, em **~2 min**, sem 504 (confirma o timeout do nginx) |
+| Visual no navegador | **não testado**: não há navegador headless na máquina |
+
+**Riscos para o deploy na AWS:**
+
+- **A API não tem autenticação.** Com o link, qualquer pessoa envia e apaga documentos e consome CPU do Ollama. Antes de expor, colocar pelo menos autenticação básica no nginx; a solução definitiva é a da F3 (API key ou JWT e rate limiting).
+- **A porta 8000 da API continua publicada no compose.** Na AWS, abrir no security group só a porta do `web` (ou 80/443 atrás de um load balancer), ou tirar o `ports` do serviço `api`.
+- **Sem HTTPS.** O nginx escuta só HTTP; o TLS deve ficar num ALB/CloudFront ou num certificado no próprio nginx.
+
 ## O que falta
 
 ### Para fechar a Camada A
@@ -123,6 +173,12 @@ Itens movidos para a Camada B, onde viram trabalho medido em vez de ajuste avuls
 - **Trechos menores (`CHUNK_SIZE=300`)** → F5, como experimento comparado com Ragas.
 - **Latência do LLM** → F4, como métrica em painel. Ponto de partida, do histórico em `questions` (14/10/2026): perguntas que chamam o `qwen2.5:3b` levaram de 2,2 s a 140 s, mediana 16,5 s (27 perguntas); recusas pelo limiar, de 37 a 100 ms. O máximo de 140 s está perto do `LLM_TIMEOUT_SECONDS` de 300 s.
 
+### Frontend
+
+- [ ] **Conferir o visual no navegador** (`http://localhost:8080`), no desktop e no celular.
+- [ ] **Autenticação antes de expor na AWS** (básica no nginx como paliativo; F3 como solução).
+- [ ] **Fechar a porta 8000 da API** no ambiente da AWS e colocar HTTPS na frente do `web`.
+
 ### Camada B (você aplica)
 
 Ordem sugerida na spec. Cada fase já tem o ponto de encaixe pronto na aplicação.
@@ -139,6 +195,7 @@ Ordem sugerida na spec. Cada fase já tem o ponto de encaixe pronto na aplicaç�
 ```bash
 uv sync
 uv run pytest                      # unitários + API em memória
-docker compose up -d --build       # stack completa
+docker compose up -d --build       # stack completa; interface em localhost:8080
 ./scripts/pull-models.sh           # só na primeira vez
+cd frontend && npm install && npm run dev   # frontend em modo dev (localhost:5173)
 ```
