@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+    branches:
+    - main
+
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Instalar dependências
+        run: uv sync
+
+      - name: Ruff (lint)
+        run: uv run ruff check . 
+
+      - name: Ruff (formatação)
+        run: uv run ruff format --check . 
+
+      - name: Testes
+        run: uv run pytest
+
+#O que cada parte faz
+#name: vira o nome do workflow na aba Actions.
+
+#push: vazio: dispara em qualquer push, de qualquer branch. 
+#Sem ele, o workflow só roda em PR para a main, e você não veria nada agora.
+
+#name: dentro do step: é opcional, mas é o rótulo que aparece no log. Sem ele, o GitHub mostra o comando cru.
+
+#uses: × run:: uses chama uma action pronta, que é código de outra pessoa 
+#(aqui, o instalador do uv). run executa um comando no terminal do Ubuntu, exatamente como você faria na sua máquina.
+
+#with: enable-cache: true: with passa parâmetros para a action. Com o cache,
+#o uv guarda os pacotes baixados entre execuções e a CI fica mais rápida. A chave do cache é
+#o uv.lock: mudou o lock, o cache é refeito.
+
+#uv sync: lê o pyproject.toml e o uv.lock, instala o Python 3.12 se faltar e cria o .venv com as dependências,
+#incluindo as de dev (pytest e ruff).
+
+#uv run ...: executa o comando dentro desse .venv.
+
+#--check no format: só verifica e falha se algo estiver fora do padrão. 
+#Na CI você quer saber do problema, não corrigir sozinho.
+
+#Os steps rodam em sequência, e se um falhar, os seguintes não rodam. Por isso o lint vem antes dos testes: 
+#é mais rápido e falha cedo.
+
+#A versão @v6 do setup-uv é a que eu conheço. Confira no README do astral-sh/setup-uv se já saiu uma mais nova.
+
