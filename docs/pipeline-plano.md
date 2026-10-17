@@ -33,16 +33,16 @@ flowchart LR
 ### Etapa 0 — Preparação
 
 - [ ] Registrar o frontend na spec: mover "Interface web" de *Fora de escopo* para os requisitos (RF09) e a tarefa (T11).
-- [ ] Confirmar que nenhum `.env` real está no repositório nem no histórico (`git log --all -- .env`).
+- [x] Confirmar que nenhum `.env` real está no repositório nem no histórico (`git log --all -- .env`).
 
 *Pronto quando:* a spec descreve o que existe no código.
 
 ### Etapa 1 — CI do backend
 
-- [ ] Workflow disparado em `push` e `pull_request`.
-- [ ] Checkout → instalar `uv` (com cache) → `uv sync` → `ruff check` e `ruff format --check`.
-- [ ] `pytest` com um *service container* `pgvector/pgvector` e `TEST_DATABASE_URL` apontando para ele, rodando as migrations antes.
-- [ ] Relatório de cobertura como artefato do job.
+- [x] Workflow disparado em `push` e `pull_request`.
+- [x] Checkout → instalar `uv` (com cache) → `uv sync` → `ruff check` e `ruff format --check`.
+- [x] `pytest` com um *service container* `pgvector/pgvector` e `TEST_DATABASE_URL` apontando para ele, rodando as migrations antes.
+- [x] Relatório de cobertura como artefato do job.
 
 *Pronto quando:* os 59 testes passam no GitHub, **0 pulados**.
 *Para estudar:* sintaxe de workflow (`on`, `jobs`, `steps`), `services`, cache de dependências.
