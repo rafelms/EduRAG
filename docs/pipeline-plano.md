@@ -49,9 +49,9 @@ flowchart LR
 
 ### Etapa 2 — CI do frontend
 
-- [ ] Job separado, rodando em paralelo ao do backend.
-- [ ] `npm ci` (nunca `npm install` na CI) → lint → build.
-- [ ] Testes, se houver.
+- [x] Job separado, rodando em paralelo ao do backend.
+- [x] `npm ci` (nunca `npm install` na CI) → lint → build.
+- [ ] Testes, se houver. (ainda não há testes no front)
 
 *Pronto quando:* os dois jobs ficam verdes no mesmo PR.
 *Para estudar:* jobs paralelos, `needs`, por que `npm ci` usa o lockfile.
