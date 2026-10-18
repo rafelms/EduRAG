@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proteção da main</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Referência · da <a href="../lessons/0001-protegendo-a-main.html">aula 0001</a></p>
+  <h1>Proteção da <code>main</code> e fluxo por PR</h1>
+</header>
+
+<h2>Ruleset <code>protege-main</code></h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Campo</th><th>Valor</th><th>Lembrete</th></tr>
+  <tr><td>Enforcement status</td><td>Active</td><td>O padrão é Disabled</td></tr>
+  <tr><td>Bypass list</td><td>vazia</td><td>Admin na lista ignora tudo</td></tr>
+  <tr><td>Target</td><td>Include default branch</td><td>A <code>main</code></td></tr>
+  <tr><td>Restrict deletions</td><td>ligada</td><td></td></tr>
+  <tr><td>Block force pushes</td><td>ligada</td><td></td></tr>
+  <tr><td>Require a pull request</td><td>0 aprovações</td><td>O autor não aprova o próprio PR</td></tr>
+  <tr><td>Require status checks</td><td><code>backend</code>, <code>frontend</code></td><td>São os ids dos jobs no <code>ci.yml</code>; o modo estrito fica ligado</td></tr>
+</table>
+</div>
+<p class="source">Caminho: Settings → Rules → Rulesets → New branch ruleset.</p>
+
+<h2>Fluxo de cada mudança</h2>
+<pre><code>git switch main && git pull
+git switch -c tipo/descricao       # ex.: ci/gitleaks
+# ... edita, testa local ...
+git add -p && git commit -m "ci: ..."
+git push -u origin tipo/descricao
+# abre o PR → espera backend + frontend verdes → Merge
+git switch main && git pull
+git branch -d tipo/descricao</code></pre>
+
+<h2>Quando algo dá errado</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Sintoma</th><th>Causa provável</th></tr>
+  <tr><td>Push direto na <code>main</code> ainda passa</td><td>Ruleset Disabled ou você está na bypass list</td></tr>
+  <tr><td>Check não aparece em "Add checks"</td><td>O job não rodou recentemente: faça um push ou abra um PR antes</td></tr>
+  <tr><td>PR travado em "Expected — waiting"</td><td>O workflow não disparou para esse PR (confira <code>on.pull_request.branches</code>) ou o nome do job mudou</td></tr>
+  <tr><td>Renomeei um job e o PR travou</td><td>O check obrigatório tem o nome antigo: atualize o ruleset</td></tr>
+  <tr><td>"Branch is out of date"</td><td>Modo estrito: clique em <em>Update branch</em></td></tr>
+</table>
+</div>
+
+<h2>Prova para o currículo</h2>
+<ul>
+  <li>Print do push direto recusado.</li>
+  <li>Link do PR com teste quebrado e merge bloqueado (fechado sem mesclar).</li>
+</ul>
+
+<p class="source">Fontes: <a href="https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets">About rulesets</a> · <a href="https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets">Available rules</a> · <a href="https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/approving-a-pull-request-with-required-reviews">Approving a PR</a></p>
+
+</main>
+</body>
+</html>
