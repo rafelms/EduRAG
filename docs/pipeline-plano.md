@@ -58,8 +58,8 @@ flowchart LR
 
 ### Etapa 3 — Proteção da branch `main`
 
-- [ ] Exigir PR para entrar na `main` (sem push direto).
-- [ ] Exigir os checks das etapas 1 e 2 como obrigatórios.
+- [x] Exigir PR para entrar na `main` (sem push direto).
+- [x] Exigir os checks das etapas 1 e 2 como obrigatórios.
 
 *Pronto quando:* um PR com teste quebrado não consegue ser mesclado.
 **A partir daqui, toda mudança entra por PR**, inclusive as próximas etapas.

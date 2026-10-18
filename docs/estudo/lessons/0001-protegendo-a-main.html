@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Protegendo a main</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Aula 0001 · Etapa 3 do <a href="../../pipeline-plano.md">pipeline-plano</a> · ~25 min</p>
+  <h1>Protegendo a <code>main</code></h1>
+  <p class="subtitle">A CI passa de aviso a portão.</p>
+</header>
+
+<h2>O problema</h2>
+
+<p>Hoje o seu <code>ci.yml</code> roda os jobs <code>backend</code> e <code>frontend</code> em todo PR. Mas ele só <em>informa</em>. Se o pytest falhar, o botão <strong>Merge</strong> continua verde, e um <code>git push origin main</code> direto nem passa por PR. A CI vira um conselho que dá para ignorar.</p>
+
+<div class="flow" aria-label="Fluxo com proteção">
+  <span>branch de trabalho</span><i>→</i><span>PR</span><i>→</i><span>backend + frontend</span><i>→</i><span class="gate">ruleset da main</span><i>→</i><span>merge</span>
+</div>
+
+<p>Um <strong>ruleset</strong> é a peça que transforma o resultado da CI em uma condição para o merge. É <q>uma lista nomeada de regras</q> que o GitHub aplica a branches que você escolher.<span class="source"> (<a href="https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets">About rulesets</a>)</span></p>
+
+<div class="note">
+  <p><strong>Ruleset ou proteção de branch clássica?</strong> As duas resolvem o problema. Use o ruleset, que é o modelo mais novo: você pode ter vários ao mesmo tempo, eles se somam (vale sempre a regra mais restritiva), dá para desativar sem apagar, e qualquer pessoa com acesso de leitura consegue ver as regras ativas.<span class="source"> (<a href="https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets">About rulesets</a>)</span></p>
+</div>
+
+<h2>As quatro regras e o porquê de cada uma</h2>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Regra</th><th>Valor</th><th>Por quê</th></tr>
+  <tr>
+    <td>Restrict deletions</td><td>ligada</td>
+    <td>Ninguém apaga a <code>main</code> por acidente.</td>
+  </tr>
+  <tr>
+    <td>Block force pushes</td><td>ligada</td>
+    <td>Um <code>push --force</code> reescreve o histórico e pode apagar commits.<span class="source"> (<a href="https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets">Available rules</a>)</span></td>
+  </tr>
+  <tr>
+    <td>Require a pull request before merging</td><td>ligada, <strong>0 aprovações</strong></td>
+    <td>Acaba com o push direto. Zero aprovações porque <q>o autor de um PR não pode aprovar o próprio PR</q>: com 1, você ficaria preso sozinho.<span class="source"> (<a href="https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/approving-a-pull-request-with-required-reviews">Approving a PR</a>)</span></td>
+  </tr>
+  <tr>
+    <td>Require status checks to pass</td><td><code>backend</code> e <code>frontend</code></td>
+    <td>É aqui que a CI vira portão. Os nomes são os <strong>ids dos jobs</strong> no <code>ci.yml</code>. Por isso o GitHub pede nomes de job únicos entre os workflows.<span class="source"> (<a href="https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches/about-protected-branches">About protected branches</a>)</span></td>
+  </tr>
+</table>
+</div>
+
+<h3>Duas armadilhas</h3>
+<ul>
+  <li><strong>O ruleset nasce desativado.</strong> O status padrão é <em>Disabled</em>. Se você esquecer de mudar para <em>Active</em>, nada é aplicado.<span class="source"> (<a href="https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/creating-rulesets-for-a-repository">Creating rulesets</a>)</span></li>
+  <li><strong>Você é admin.</strong> Quem está na <em>bypass list</em> passa por cima das regras. Deixe a lista <strong>vazia</strong>, senão o seu próprio push direto continua funcionando e o teste final não prova nada.</li>
+</ul>
+
+<div class="note">
+  <p><strong>"Require branches to be up to date before merging"</strong> é o modo estrito: a branch do PR precisa estar atualizada com a <code>main</code> antes do merge.<span class="source"> (<a href="https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets">Available rules</a>)</span> Ligue. Assim, os checks sempre rodam sobre o código que vai de fato para a <code>main</code>. O custo é às vezes clicar em <em>Update branch</em>.</p>
+</div>
+
+<h2>Faça você</h2>
+
+<ol class="checklist" data-key="0001-ruleset">
+  <li><strong>Abra a tela.</strong> Em <code>github.com/rafelms/EduRAG</code>: <em>Settings</em> → <em>Rules</em> → <em>Rulesets</em> → <em>New ruleset</em> → <em>New branch ruleset</em>.</li>
+  <li><strong>Nome e status.</strong> <em>Ruleset name</em>: <code>protege-main</code>. <em>Enforcement status</em>: <strong>Active</strong>.</li>
+  <li><strong>Bypass list vazia.</strong> Não adicione ninguém.</li>
+  <li><strong>Alvo.</strong> Em <em>Target branches</em> → <em>Add target</em> → <em>Include default branch</em>.</li>
+  <li><strong>Regras.</strong> Confira se <em>Restrict deletions</em> e <em>Block force pushes</em> estão marcadas. Marque <em>Require a pull request before merging</em> com <em>Required approvals</em> = 0.</li>
+  <li><strong>Checks.</strong> Marque <em>Require status checks to pass</em> e <em>Require branches to be up to date</em>. Em <em>Add checks</em>, digite e adicione <code>backend</code> e <code>frontend</code>. Se aparecer a opção de origem, escolha <em>GitHub Actions</em>.</li>
+  <li><strong>Salve</strong> em <em>Create</em>.</li>
+</ol>
+
+<h2>Prove o portão</h2>
+
+<p>O plano diz: <em>"Pronto quando: um PR com teste quebrado não consegue ser mesclado."</em> Faça as duas provas e tire print de cada uma, como pede a seção "Comprovação para o currículo" do plano.</p>
+
+<h3>Prova 1: push direto é recusado</h3>
+<pre><code>git switch main
+git commit --allow-empty -m "teste: push direto"
+git push origin main</code></pre>
+<p>O push precisa ser <strong>recusado</strong>, com uma mensagem do tipo <code>Repository rule violations</code>. Depois, desfaça o commit local com <code>git reset --hard origin/main</code>. Esse commit só existe na sua máquina, porque o push foi recusado.</p>
+
+<h3>Prova 2: PR com teste quebrado fica travado</h3>
+<pre><code>git switch -c teste/portao-quebrado
+# crie tests/test_portao.py com:
+#   def test_portao():
+#       assert False, "falha proposital para provar o portão"
+git add tests/test_portao.py
+git commit -m "teste: falha proposital"
+git push -u origin teste/portao-quebrado</code></pre>
+<p>Abra o PR no GitHub. O job <code>backend</code> deve ficar vermelho e o botão de merge, <strong>bloqueado</strong>. Tire o print, <strong>feche o PR sem mesclar</strong> e apague a branch.</p>
+
+<h3>O fluxo novo, daqui para frente</h3>
+<p>Toda mudança agora segue o mesmo caminho: <code>git switch -c &lt;branch&gt;</code> → commit → push → PR → checks verdes → merge no GitHub → <code>git switch main &amp;&amp; git pull</code>. A primeira mudança de verdade nesse fluxo é marcar a etapa 3 como feita no <code>pipeline-plano.md</code> (junto com esta pasta <code>docs/estudo/</code>).</p>
+
+<h2>Recupere da memória</h2>
+<p>Responda sem voltar ao texto. O esforço de lembrar é o que fixa o conteúdo.</p>
+
+<div class="quiz">
+  <div class="question" data-answer="2">
+    <p class="prompt">1. Por que exigir 0 aprovações, e não 1?</p>
+    <div class="options">
+      <button>Aprovações só funcionam em repositórios privados</button>
+      <button>Aprovação extra deixaria os jobs da CI lentos</button>
+      <button>O autor não pode aprovar o próprio pull request</button>
+    </div>
+    <p class="feedback" data-ok="Isso. Num projeto solo, 1 aprovação trava todos os merges." data-bad="Não. A regra é que o autor não aprova o próprio PR; com 1 aprovação, você ficaria preso."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">2. Qual nome você digita em "Add checks"?</p>
+    <div class="options">
+      <button>O id do job escrito no ci.yml</button>
+      <button>O name do workflow no topo do yml</button>
+      <button>O nome do arquivo yml na pasta workflows</button>
+    </div>
+    <p class="feedback" data-ok="Certo: backend e frontend são os ids dos jobs." data-bad="Não. O check obrigatório é o job: backend e frontend."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">3. Você criou o ruleset, mas o push direto na main ainda funciona. Qual é a causa mais provável?</p>
+    <div class="options">
+      <button>Os checks backend e frontend não rodaram ainda</button>
+      <button>O ruleset ficou Disabled ou você está no bypass</button>
+      <button>O modo estrito de branch atualizada está desligado</button>
+    </div>
+    <p class="feedback" data-ok="Isso. As duas são as armadilhas: status padrão Disabled e admin na bypass list." data-bad="Não. Confira o Enforcement status (precisa ser Active) e se a bypass list está vazia."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">4. O que o modo "Require branches to be up to date" garante?</p>
+    <div class="options">
+      <button>Que o pytest rode em todos os commits</button>
+      <button>Que ninguém consiga dar force push na main</button>
+      <button>Que os checks testaram o código já com a main</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Sem ele, um PR verde sobre uma main antiga pode quebrar depois do merge." data-bad="Não. Ele exige a branch atualizada com a main, para os checks valerem sobre o resultado do merge."></p>
+  </div>
+</div>
+
+<footer class="lesson">
+  <p><strong>Fonte principal:</strong> <a href="https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/about-rulesets">Docs do GitHub: About rulesets</a> e as páginas ligadas a ela.</p>
+  <p><strong>Referência rápida:</strong> <a href="../reference/protecao-da-main.html">Proteção da main e fluxo por PR</a>.</p>
+  <p>Ficou alguma dúvida, ou algo na tela do GitHub está diferente do que está escrito aqui? Pergunte ao Claude no terminal. Ele é o seu professor nesta trilha.</p>
+</footer>
+
+</main>
+<script src="../assets/checklist.js"></script>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
