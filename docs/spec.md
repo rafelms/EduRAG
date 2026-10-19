@@ -1,6 +1,6 @@
 # EduRAG — Spec (SDD)
 
-> Spec-Driven Development · versão 1.0 · 13/10/2026 · autor: Rafael
+> Spec-Driven Development · versão 1.1 · 19/10/2026 (1.0 em 13/10/2026) · autor: Rafael
 
 ---
 
@@ -31,6 +31,7 @@ Cada requisito só está pronto quando o critério de aceitação passa em teste
 | RF06 | Responder "não encontrei" | Se o melhor trecho ficar abaixo do limiar de similaridade, responde que não encontrou a informação **sem chamar o LLM**. O limiar é conservador (ver "Limitação conhecida"): a maioria das recusas vem do próprio LLM, guiado pelo prompt, e nesse caso a resposta não traz fontes. |
 | RF07 | Guardar histórico | Toda pergunta grava pergunta, resposta, fontes, modelo usado e latência em ms; listagem paginada. |
 | RF08 | Informar saúde | `/health` responde `200` se o processo está vivo; `/ready` só responde `200` se banco e Ollama respondem. |
+| RF09 | Usar pela interface web | Uma página web permite enviar PDFs (clique ou arraste) e acompanhar o status até `pronto`, excluir com confirmação, fazer perguntas (até 2000 caracteres, `top_k` de 1 a 20, com opção de restringir a documentos marcados), ver as fontes com arquivo, página, similaridade e trecho, navegar no histórico (10 por página) e ver qual componente do `/ready` caiu. A interface só fala com a API por `/api/*`, na mesma origem. *Pendente:* ainda sem teste automatizado; hoje validado à mão, no navegador e pelo proxy. |
 
 ---
 
@@ -51,13 +52,16 @@ O projeto precisa rodar inteiro numa máquina comum, sem GPU e sem custo.
 
 ## 4. Arquitetura, stack e estrutura de pastas
 
-Toda a aplicação sobe com um `docker compose up`: três serviços numa rede interna.
+Toda a aplicação sobe com um `docker compose up`: quatro serviços numa rede interna.
 
 ```mermaid
 flowchart LR
-    C[Cliente<br/>Swagger / curl] -- HTTP --> API
+    N[Navegador] -- HTTP :8080 --> WEB
+    C[Cliente<br/>Swagger / curl] -- HTTP :8000 --> API
 
     subgraph Compose[Docker Compose — rede interna]
+        WEB[web: nginx<br/>build do React<br/>proxy /api → api:8000]
+        WEB -- /api/* --> API
         API[API FastAPI<br/>rotas → serviços → portas<br/>ingestão em background<br/>logs JSON, /health, /ready]
         PG[(PostgreSQL + pgvector<br/>documentos, trechos, perguntas)]
         OL[Ollama<br/>geração: qwen2.5:3b<br/>embeddings: nomic-embed-text]
@@ -82,6 +86,8 @@ A API segue arquitetura em camadas com portas e adaptadores: as **rotas** só va
 | Leitura de PDF | pypdf | Simples, sem dependências nativas |
 | Testes | pytest + httpx | Padrão do ecossistema |
 | Lint | ruff | Lint e formatação em uma ferramenta |
+| Interface web | React 19 + Vite + Tailwind 4 + TypeScript, lint com oxlint | Sem outras bibliotecas; build estático |
+| Servidor da interface | nginx (`nginx-unprivileged`) | Serve o build e faz proxy de `/api`; roda sem root na porta 8080 |
 
 ### Estrutura de pastas
 
@@ -117,6 +123,13 @@ edurag/
 │   ├── unit/                   # domínio com fakes
 │   ├── integration/            # API + Postgres real
 │   └── fakes.py                # FakeLLM, FakeEmbeddings
+├── frontend/
+│   ├── src/
+│   │   ├── api.ts              # cliente e tipos, espelhando api/schemas.py
+│   │   ├── useDocuments.ts     # lista de documentos com polling
+│   │   └── components/         # DocumentsPanel, AskPanel, HistoryPanel, SourceList, StatusIndicator
+│   ├── nginx.conf              # serve o build, fallback da SPA, proxy de /api/
+│   └── Dockerfile              # build em node, runtime em nginx-unprivileged
 ├── scripts/
 │   └── pull-models.sh          # baixa os modelos no Ollama
 ├── docs/
@@ -141,6 +154,7 @@ Mudanças feitas depois da versão 1.0, registradas aqui antes do código (regra
 | 14/10/2026 | `MIN_SCORE` padrão de 0,45 para 0,3, para cumprir a alternativa 1 (limiar só em casos extremos). | Medido no currículo reenviado: "Do que se trata este documento?" teve 0,44 e foi recusada pelo limiar, enquanto "receita de bolo" teve 0,50 a 0,56 e passou. Com 0,45 o limiar recusava perguntas legítimas e deixava passar as fora do tema. |
 | 14/10/2026 | Prompt reescrito em regras numeradas: só fatos do contexto; perguntas sobre o assunto do documento são válidas; pedidos de receitas, hipóteses, opiniões, textos criativos, "como ele faria" ou "imagine que" recebem a frase de recusa. A recusa só remove as fontes quando a resposta é exatamente a frase de recusa. | Com o prompt antigo, "Dado que Rafael é desenvolvedor, como ele diria uma receita de bolo?" gerou uma resposta inventada, citando o currículo. O prompt novo recusa esse caso e mantém as respostas legítimas (comparação lado a lado com a mesma busca). |
 | 14/10/2026 | Trocar o modelo de embeddings por um multilíngue (ex.: `bge-m3`, 1024 dimensões) fica como alternativa, só se a separação dos scores continuar fraca. | Exigiria migration nova da coluna `embedding` e reindexação de todos os documentos. |
+| 16/10/2026 (registrada em 19/10/2026) | **Interface web sai de "Fora de escopo"** e vira o RF09 e a T11: React + Vite + Tailwind em `frontend/`, servida pelo serviço `web` do compose (nginx, porta `${WEB_PORT:-8080}`). O nginx repassa `/api/*` para `api:8000` sem o prefixo, com `proxy_read_timeout 330s` (acima do `LLM_TIMEOUT_SECONDS` de 300 s) e `client_max_body_size 25m` (acima do `MAX_UPLOAD_MB` de 20). O backend não mudou. | O deploy na AWS precisa de uma interface para quem não usa Swagger ou curl. A mesma origem dispensa CORS na API. A decisão foi registrada depois do código, ao contrário da regra 5 da seção 9. |
 
 ---
 
@@ -253,6 +267,7 @@ Cada tarefa cabe em uma conversa com a IA e termina com algo rodando. Faça na o
 - [ ] **T8 — Histórico.** Gravação em `questions` e rota `/questions` (RF07). *Pronto quando:* cada pergunta feita aparece no histórico com latência.
 - [ ] **T9 — Testes de integração.** API com Postgres real (via compose ou testcontainers) e LLM fake. *Pronto quando:* `pytest` passa inteiro e a cobertura de `domain/` é de pelo menos 70%.
 - [ ] **T10 — README.** Diagrama, como rodar, variáveis de ambiente e exemplos com curl. *Pronto quando:* alguém consegue rodar o projeto só lendo o README.
+- [x] **T11 — Interface web.** Frontend em `frontend/` (RF09), Dockerfile multi-stage não-root com nginx e serviço `web` no compose. *Pronto quando:* `npm run build` e `npm run lint` passam, a interface abre em `localhost:8080`, `/api/*` chega à API pelo proxy e uma pergunta lenta (~2 min) volta sem 504.
 
 **Fim da Camada A.** A partir daqui, o projeto está pronto para a Camada B.
 
@@ -279,7 +294,6 @@ Regra de ouro para a Camada B: escreva você mesmo. Peça à IA para explicar co
 
 ### Fora de escopo (por enquanto)
 
-- Interface web (o Swagger do FastAPI basta).
 - Autenticação e multiusuário (entram na F3).
 - OCR de PDFs escaneados.
 - Fila de mensagens (Celery, RQ); o `BackgroundTasks` resolve para o estudo.

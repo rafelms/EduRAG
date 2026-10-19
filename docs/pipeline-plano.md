@@ -32,7 +32,7 @@ flowchart LR
 
 ### Etapa 0 — Preparação
 
-- [ ] Registrar o frontend na spec: mover "Interface web" de *Fora de escopo* para os requisitos (RF09) e a tarefa (T11).
+- [x] Registrar o frontend na spec: mover "Interface web" de *Fora de escopo* para os requisitos (RF09) e a tarefa (T11).
 - [x] Confirmar que nenhum `.env` real está no repositório nem no histórico (`git log --all -- .env`).
 
 *Pronto quando:* a spec descreve o que existe no código.
