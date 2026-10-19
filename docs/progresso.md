@@ -1,13 +1,13 @@
 # EduRAG: progresso
 
-> Atualizado em 16/10/2026. Referência: [spec.md](spec.md).
+> Atualizado em 19/10/2026. Referência: [spec.md](spec.md).
 
 ## Resumo
 
 - **Camada A (aplicação):** implementada e **validada ponta a ponta** com PostgreSQL + pgvector e Ollama reais (`qwen2.5:3b` e `nomic-embed-text`). Falta só a sua revisão do código.
 - **Qualidade da recuperação:** funciona, mas o limiar `MIN_SCORE` **não separa bem** perguntas do tema e fora do tema com esse modelo de embeddings (detalhes abaixo). Decisão tomada: aceitar a limitação e documentá-la na spec; quem segura as perguntas fora do tema é o prompt, não o limiar.
-- **Frontend (fora da spec, 16/10/2026):** interface React + Tailwind em `frontend/`, servida por nginx no compose (porta 8080), pensada para o deploy na AWS. Validada ponta a ponta pelo proxy; o visual ainda não foi conferido em navegador.
-- **Camada B (operação):** não iniciada. Pela regra da spec, você escreve; a IA explica e revisa.
+- **Frontend (16/10/2026; na spec como RF09 e T11 desde 19/10/2026):** interface React + Tailwind em `frontend/`, servida por nginx no compose (porta 8080), pensada para o deploy na AWS. Validada ponta a ponta pelo proxy e conferida no navegador em 19/10/2026.
+- **Camada B (operação):** em andamento. Etapas 0 a 3 da pipeline concluídas (ver [pipeline-plano.md](pipeline-plano.md)); a próxima é a 4 (gitleaks).
 
 ## O que foi feito
 
@@ -25,6 +25,7 @@
 | T8: Histórico | Feita | `GET /questions` |
 | T9: Testes de integração | Feita | `tests/integration/` |
 | T10: README | Feita | `README.md` |
+| T11: Interface web | Feita e conferida no navegador | `frontend/`, serviço `web` no `docker-compose.yml` |
 
 ### O que foi testado
 
@@ -105,9 +106,9 @@ Os prefixos subiram todos os scores, inclusive o de fora do tema, então a dist�
 | `str.format` com chaves `{}` no texto do PDF | **Sem problema:** `format` não reinterpreta os valores substituídos |
 | Falha do Ollama no `/ask` devolve 502, mas a pergunta não vai para o histórico | **Aceito** para a Camada A; vira métrica de erro na F4 |
 
-### Frontend web (16/10/2026, fora da spec)
+### Frontend web (16/10/2026)
 
-A spec não prevê interface; ela foi criada para o deploy na AWS. O backend não mudou.
+Criado para o deploy na AWS, antes de estar na spec; registrado depois como RF09 e T11 (19/10/2026). O backend não mudou.
 
 **Stack:** React 19 + Vite + Tailwind 4 + TypeScript, em `frontend/`. Sem bibliotecas além dessas.
 
@@ -146,7 +147,7 @@ A spec não prevê interface; ela foi criada para o deploy na AWS. O backend nã
 | Upload de `.txt` pelo proxy | 400 "Apenas arquivos PDF são aceitos." |
 | Pergunta vazia | 422 com lista de validação; o frontend mostra "a pergunta não pode ser vazia" |
 | "Qual a formação acadêmica?" no currículo | resposta correta com fonte, em **~2 min**, sem 504 (confirma o timeout do nginx) |
-| Visual no navegador | **não testado**: não há navegador headless na máquina |
+| Visual no navegador | conferido à mão em 19/10/2026 |
 
 **Riscos para o deploy na AWS:**
 
@@ -175,7 +176,9 @@ Itens movidos para a Camada B, onde viram trabalho medido em vez de ajuste avuls
 
 ### Frontend
 
-- [ ] **Conferir o visual no navegador** (`http://localhost:8080`), no desktop e no celular.
+- [x] **Conferir o visual no navegador** (`http://localhost:8080`), em 19/10/2026.
+- [x] **Registrar na spec** como RF09 e T11 (19/10/2026).
+- [ ] **Testes automatizados do front**, para o RF09 cumprir a regra da seção 2 da spec (e a Etapa 2 do plano).
 - [ ] **Autenticação antes de expor na AWS** (básica no nginx como paliativo; F3 como solução).
 - [ ] **Fechar a porta 8000 da API** no ambiente da AWS e colocar HTTPS na frente do `web`.
 
@@ -183,7 +186,7 @@ Itens movidos para a Camada B, onde viram trabalho medido em vez de ajuste avuls
 
 Ordem sugerida na spec. Cada fase já tem o ponto de encaixe pronto na aplicação.
 
-- [ ] **F2: Pipeline segura.** GitHub Actions com ruff, pytest (serviço Postgres para `TEST_DATABASE_URL`), Semgrep ou Bandit, Trivy, gitleaks, Dependabot e proteção de branch. O repositório já está no GitHub: `rafelms/EduRAG`.
+- [ ] **F2: Pipeline segura** (em andamento: etapas 0 a 3 feitas, ver [pipeline-plano.md](pipeline-plano.md)). GitHub Actions com ruff, pytest (serviço Postgres para `TEST_DATABASE_URL`), Semgrep ou Bandit, Trivy, gitleaks, Dependabot e proteção de branch. O repositório já está no GitHub: `rafelms/EduRAG`.
 - [ ] **F3: Segredos e acesso.** SOPS ou Vault, API key ou JWT (middleware em `app/api/`) e rate limiting.
 - [ ] **F4: Observabilidade.** `/metrics` para Prometheus, Grafana, Loki e OpenTelemetry. O `request_id` e os logs JSON já existem. Inclui o painel de latência do LLM (veio da Camada A) e um alerta perto do `LLM_TIMEOUT_SECONDS`.
 - [ ] **F5: LLMOps.** Langfuse em `app/adapters/ollama_llm.py`, Ragas na CI (o conjunto de perguntas de referência serve também para calibrar o limiar), defesa contra prompt injection em `app/domain/prompts.py`, mascaramento de CPF e e-mail e custo em tokens. Inclui o experimento de `CHUNK_SIZE` (300 contra 800), medido com o conjunto de referência (veio da Camada A).
