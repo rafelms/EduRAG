@@ -76,7 +76,7 @@ Para cada ferramenta: primeiro rodar em modo de relatório, corrigir o que apare
 - [x] Uma varredura única em **todo o histórico** do repositório (gitleaks v8.30.1 via Docker, `--log-opts="--all"`): nenhum achado.
 
 *Teste de bloqueio:* PR com uma chave falsa no formato de chave da AWS → pipeline falha.
-**Provado em 19/10/2026 (PR #6):** `gitleaks` falhou com `aws-access-token` e comentou na linha da chave; `backend` passou; merge bloqueado. O PR foi fechado sem merge. A chave de exemplo da AWS (`...EXAMPLE`) **não** serve para essa prova, porque a regra tem uma exceção para ela.
+**Provado em 19/10/2026 ([PR #6](https://github.com/rafelms/EduRAG/pull/6)):** [`gitleaks` falhou](https://github.com/rafelms/EduRAG/actions/runs/39280762881/job/118154214397) com `aws-access-token` e comentou na linha da chave; `backend` e `frontend` passaram; merge bloqueado. O PR foi fechado sem merge. A chave de exemplo da AWS (`...EXAMPLE`) **não** serve para essa prova, porque a regra tem uma exceção para ela.
 *Para estudar:* por que um segredo apagado num commit posterior continua vazado.
 
 ### Etapa 5 — Análise estática (SAST)
