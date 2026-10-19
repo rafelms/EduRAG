@@ -1,6 +1,6 @@
 # EduRAG — Plano de implementação da pipeline (F2 → deploy na AWS)
 
-> Atualizado em 17/10/2026. Referências: [spec.md](spec.md) e [progresso.md](progresso.md).
+> Atualizado em 19/10/2026. Referências: [spec.md](spec.md) e [progresso.md](progresso.md).
 > Regra da Camada B: **você escreve os workflows**; a IA explica e revisa.
 
 ## Visão geral
@@ -72,10 +72,11 @@ Para cada ferramenta: primeiro rodar em modo de relatório, corrigir o que apare
 
 ### Etapa 4 — Segredos (gitleaks)
 
-- [ ] Job do gitleaks em todo PR.
-- [ ] Uma varredura única em **todo o histórico** do repositório.
+- [x] Job do gitleaks em todo PR (`.github/workflows/security.yml`, job `gitleaks`, check obrigatório no ruleset `protege-main`).
+- [x] Uma varredura única em **todo o histórico** do repositório (gitleaks v8.30.1 via Docker, `--log-opts="--all"`): nenhum achado.
 
 *Teste de bloqueio:* PR com uma chave falsa no formato de chave da AWS → pipeline falha.
+**Provado em 19/10/2026 (PR #6):** `gitleaks` falhou com `aws-access-token` e comentou na linha da chave; `backend` passou; merge bloqueado. O PR foi fechado sem merge. A chave de exemplo da AWS (`...EXAMPLE`) **não** serve para essa prova, porque a regra tem uma exceção para ela.
 *Para estudar:* por que um segredo apagado num commit posterior continua vazado.
 
 ### Etapa 5 — Análise estática (SAST)

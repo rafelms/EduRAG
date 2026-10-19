@@ -32,4 +32,5 @@
 
 - Fonte oficial sobre o limite de tempo para um check aparecer na lista de checks obrigatórios.
 - Qual versão do gitleaks a `gitleaks-action@v3.0.0` usa por padrão (não está documentada; por isso fixamos `GITLEAKS_VERSION`).
-- Se o *push protection* do GitHub barra um ID de chave da AWS sozinho, sem o segredo correspondente.
+- ~~Se o *push protection* do GitHub barra um ID de chave da AWS sozinho.~~ Observado em 19/10/2026: **não barra** (o push do PR #6 passou); só o gitleaks pegou. Ainda sem fonte oficial.
+- [GitHub Status](https://www.githubstatus.com): primeiro lugar a olhar quando os checks ficam presos em *Queued* sem log (foi um incidente do Actions no PR #6).
