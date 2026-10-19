@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Segredos com gitleaks</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Aula 0002 · Etapa 4 do <a href="../../pipeline-plano.md">pipeline-plano</a> · ~30 min</p>
+  <h1>Segredos com gitleaks</h1>
+  <p class="subtitle">O primeiro portão de segurança: nenhuma chave entra na <code>main</code>.</p>
+</header>
+
+<p>Na <a href="0001-protegendo-a-main.html">aula 0001</a>, a CI virou portão. Até aqui, porém, ela só verifica qualidade: lint, testes e build. A etapa 4 abre o Bloco B com a pergunta mais barata de responder e mais cara de errar: <em>tem alguma senha ou chave neste código?</em></p>
+
+<h2>Por que apagar não resolve</h2>
+
+<p>O Git guarda cada versão de cada arquivo. Se uma chave entrou no commit <code>A</code> e foi apagada no commit <code>B</code>, ela continua inteira em <code>A</code>, e qualquer pessoa que clonar o repositório consegue lê-la com <code>git log -p</code>. O seu repositório é público.</p>
+
+<div class="flow" aria-label="Segredo no histórico">
+  <span>commit A: adiciona a chave</span><i>→</i><span>commit B: apaga a chave</span><i>→</i><span class="gate">A continua no histórico</span>
+</div>
+
+<p>A documentação do GitHub é direta: fazer <q>um novo commit, ou apagar e recriar o repositório, não impede que o segredo seja explorado</q>. Todo segredo vazado deve ser tratado como <q>comprometido imediatamente</q>, e <strong>revogar a chave no provedor</strong> é <q>o passo de correção mais importante</q>.<span class="source"> (<a href="https://docs.github.com/en/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/remediating-a-leaked-secret">Remediating a leaked secret</a>)</span> Reescrever o histórico vem depois, se vier, porque exige force push. E lembre que o seu ruleset bloqueia force push.</p>
+
+<div class="note">
+  <p><strong>A regra que fica:</strong> segredo vazado → <strong>revoga primeiro</strong>, limpa depois. É por isso que o portão precisa barrar <em>antes</em> do merge: depois, o estrago já está feito.</p>
+</div>
+
+<h2>O que é o gitleaks</h2>
+
+<p>O gitleaks procura segredos (senhas, chaves de API, tokens) em repositórios Git, em arquivos ou no texto que você passar pela entrada padrão. Ele tem três modos: <code>git</code>, <code>dir</code> e <code>stdin</code>. Os comandos antigos <code>detect</code> e <code>protect</code> foram descontinuados na v8.19.0.<span class="source"> (<a href="https://github.com/gitleaks/gitleaks">README do gitleaks</a>)</span> Cada tipo de segredo é uma <strong>regra</strong>: uma expressão regular, mais um limite de <strong>entropia</strong> (o quanto o texto parece aleatório), mais uma lista de exceções.</p>
+
+<p>Você vai usá-lo de dois jeitos, e cada um cobre um buraco do outro:</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Uso</th><th>O que analisa</th><th>Por quê</th></tr>
+  <tr>
+    <td><strong>Varredura única</strong>, na sua máquina</td>
+    <td>Todo o histórico, de todas as branches</td>
+    <td>Descobre se <em>já</em> vazou algo. O job do PR não olha para trás.</td>
+  </tr>
+  <tr>
+    <td><strong>Job na CI</strong>, a <code>gitleaks-action</code></td>
+    <td>Só os commits do PR (no push, só os commits enviados)</td>
+    <td>Impede que algo <em>novo</em> entre. A action pega a lista de commits do PR pela API e analisa só esse intervalo.<span class="source"> (<a href="https://github.com/gitleaks/gitleaks-action/blob/master/src/gitleaks.js">gitleaks.js</a>)</span></td>
+  </tr>
+</table>
+</div>
+
+<p>Isso segue o que o plano pede para todo o Bloco B: <strong>primeiro relatório, depois portão</strong>. A varredura é o relatório; o job, o portão.</p>
+
+<h2>Parte 1: varredura do histórico</h2>
+
+<p>Rode na raiz do projeto. A imagem oficial está no GHCR.<span class="source"> (<a href="https://github.com/gitleaks/gitleaks">README</a>)</span></p>
+
+<pre><code>docker run --rm -v "$PWD":/repo:Z ghcr.io/gitleaks/gitleaks:v8.30.1 \
+  git /repo --log-opts="--all" --redact -v</code></pre>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Pedaço</th><th>Para quê</th></tr>
+  <tr><td><code>:Z</code></td><td>Seu Fedora usa SELinux, que bloqueia o container de ler a pasta montada sem esse rótulo.</td></tr>
+  <tr><td><code>v8.30.1</code></td><td>A versão fixada, a mesma que você vai usar na CI. <code>latest</code> mudaria sem aviso.</td></tr>
+  <tr><td><code>--log-opts="--all"</code></td><td>Repassado ao <code>git log -p</code>: inclui todas as branches, não só a atual.</td></tr>
+  <tr><td><code>--redact</code></td><td>Esconde o valor do segredo na saída. Assim o print para o currículo não vaza nada.</td></tr>
+</table>
+</div>
+
+<p><strong>Código de saída:</strong> 0 significa nada encontrado; 1 significa achado (ou erro).<span class="source"> (<a href="https://github.com/gitleaks/gitleaks">README</a>)</span> Confira com <code>echo $?</code> logo depois.</p>
+
+<h3>Se aparecer algo</h3>
+<ul>
+  <li><strong>É um segredo real</strong> (por exemplo, uma senha que você usa em outro lugar): <strong>revogue ou troque</strong> no serviço antes de qualquer outra coisa. Depois, me chame para decidirmos juntos se vale reescrever o histórico.</li>
+  <li><strong>É falso positivo</strong> (um valor de teste, como a senha <code>edurag</code> do Postgres descartável da CI): copie o <code>Fingerprint</code> do achado para um arquivo <code>.gitleaksignore</code> na raiz, um por linha, com um comentário <code>#</code> explicando o motivo. Esse é o mesmo princípio da etapa 5: suprimir só com justificativa.<span class="source"> (<a href="https://github.com/gitleaks/gitleaks">README, seção .gitleaksignore</a>)</span></li>
+</ul>
+
+<h2>Parte 2: o job na CI</h2>
+
+<p>Agora é você quem escreve. Crie <code>.github/workflows/security.yml</code>, um arquivo novo, porque os próximos portões do Bloco B (Semgrep, Trivy) vão morar nele. A seguir estão os requisitos. As peças vêm do <a href="https://github.com/gitleaks/gitleaks-action">README da action</a>.</p>
+
+<ol class="checklist" data-key="0002-job">
+  <li><strong>Mesmos gatilhos do <code>ci.yml</code>.</strong> <code>push</code> e <code>pull_request</code> na <code>main</code>.</li>
+  <li><strong>Um job com id <code>gitleaks</code></strong> em <code>ubuntu-24.04</code>. O id precisa ser único entre os workflows, porque vai virar check obrigatório.</li>
+  <li><strong>Checkout com <code>fetch-depth: 0</code>.</strong> O padrão baixa só o último commit. Sem o histórico, o intervalo de commits do PR não existe na máquina e a análise falha.</li>
+  <li><strong>O step da action:</strong> <code>gitleaks/gitleaks-action@v3.0.0</code>. A v3 roda em Node 24; a v2 roda em Node 20, que sai dos runners do GitHub em 16/09/2026.<span class="source"> (<a href="https://github.com/gitleaks/gitleaks-action/releases">releases</a>)</span></li>
+  <li><strong>Variável <code>GITHUB_TOKEN</code></strong> vinda de <code>secrets.GITHUB_TOKEN</code>. Sem ela, a análise de PR encerra com erro. Ela é criada pelo GitHub em cada execução, então você não cadastra nada.</li>
+  <li><strong>Sem <code>GITLEAKS_LICENSE</code>.</strong> A licença só é exigida para repositórios de <em>organização</em>; o seu é de conta pessoal.<span class="source"> (<a href="https://github.com/gitleaks/gitleaks-action">README da action</a>)</span></li>
+  <li><strong>Variável <code>GITLEAKS_VERSION: 8.30.1</code></strong>, sem o <code>v</code>. Fixa a mesma versão da varredura local.</li>
+  <li><strong>Bloco <code>permissions</code> no job:</strong> <code>contents: read</code> (ler o código) e <code>pull-requests: write</code> (a action comenta no PR, na linha do achado). Declarar só o que o job usa é o menor privilégio; a etapa 6 volta a esse ponto.<span class="source"> (<a href="https://docs.github.com/en/actions/security-for-github-actions/security-guides/automatic-token-authentication">Automatic token authentication</a>)</span></li>
+</ol>
+
+<p>Quando terminar, me mostre o arquivo antes do push. Eu reviso e explico o que estiver estranho, mas não escrevo por você.</p>
+
+<h3>Do job ao portão</h3>
+<p>Abra o PR. Quando o job <code>gitleaks</code> ficar verde, vá ao ruleset <code>protege-main</code> e adicione <code>gitleaks</code> aos <em>status checks</em> obrigatórios. Sem esse passo, o job só avisa, como era a CI antes da aula 0001.</p>
+
+<h2>Prove o portão</h2>
+
+<p>O plano diz: <em>"PR com uma chave falsa no formato de chave da AWS → pipeline falha."</em></p>
+
+<div class="note">
+  <p><strong>Armadilha:</strong> não use a chave de exemplo da documentação da AWS, <code>AKIAIOSFODNN7EXAMPLE</code>. A regra <code>aws-access-token</code> tem uma exceção para qualquer valor que termine em <code>EXAMPLE</code>. Com ela, o PR passaria verde e a prova não provaria nada.<span class="source"> (<a href="https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml">gitleaks.toml</a>)</span></p>
+</div>
+
+<p>A regra procura <code>AKIA</code> seguido de 16 caracteres entre <code>A–Z</code> e <code>2–7</code>, com entropia mínima de 3. Gere um valor aleatório, que não é chave de ninguém:</p>
+
+<pre><code>git switch main && git pull
+git switch -c teste/segredo-falso
+echo "AWS_ACCESS_KEY_ID=AKIA$(tr -dc 'A-Z2-7' &lt;/dev/urandom | head -c16)" &gt; config-falsa.env
+git add config-falsa.env
+git commit -m "teste: chave falsa para provar o gitleaks"
+git push -u origin teste/segredo-falso</code></pre>
+
+<p>Abra o PR. O job <code>gitleaks</code> deve ficar vermelho, com um comentário na linha da chave, e o merge deve ficar <strong>bloqueado</strong>. Tire o print, <strong>feche o PR sem mesclar</strong> e apague a branch.</p>
+
+<div class="note">
+  <p><strong>Observe a lição de novo:</strong> mesmo com o PR fechado e a branch apagada, o commit continua acessível na aba <em>Commits</em> do PR fechado. Com uma chave falsa, isso não tem problema. Com uma real, seria um vazamento. Por isso o portão precisa existir.</p>
+</div>
+
+<h2>Recupere da memória</h2>
+<p>Responda sem voltar ao texto.</p>
+
+<div class="quiz">
+  <div class="question" data-answer="1">
+    <p class="prompt">1. Por que um segredo apagado num commit posterior continua vazado?</p>
+    <div class="options">
+      <button>O GitHub guarda cópias de cada arquivo apagado</button>
+      <button>O commit antigo continua no histórico do repositório</button>
+      <button>O gitleaks só analisa o último commit enviado</button>
+    </div>
+    <p class="feedback" data-ok="Isso. Cada commit guarda o arquivo inteiro; apagar depois não muda o commit antigo." data-bad="Não. O commit em que a chave entrou continua no histórico, e qualquer clone o tem."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">2. Você descobre uma chave real no histórico. Qual é o primeiro passo?</p>
+    <div class="options">
+      <button>Reescrever o histórico e forçar push na main</button>
+      <button>Adicionar o fingerprint dela ao arquivo de ignorados</button>
+      <button>Revogar a chave no provedor e gerar outra</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Revogar é o passo mais importante; limpar o histórico vem depois, se vier." data-bad="Não. A chave já é considerada comprometida: revogue primeiro."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">3. Por que a chave AKIAIOSFODNN7EXAMPLE não serve para a prova?</p>
+    <div class="options">
+      <button>A regra da AWS ignora chaves terminadas em EXAMPLE</button>
+      <button>O GitHub bloqueia o push antes da CI rodar</button>
+      <button>Chaves da AWS precisam ter quarenta caracteres no total</button>
+    </div>
+    <p class="feedback" data-ok="Isso. A regra aws-access-token tem a exceção .+EXAMPLE$." data-bad="Não. A regra aws-access-token tem uma exceção para valores que terminam em EXAMPLE."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">4. Para que serve fetch-depth: 0 no checkout do job?</p>
+    <div class="options">
+      <button>Sem ele, o cache do runner guarda os segredos do repositório</button>
+      <button>Sem histórico completo, o gitleaks não vê os commits do PR</button>
+      <button>Sem ele, o checkout baixa a branch main inteira de novo</button>
+    </div>
+    <p class="feedback" data-ok="Certo. O padrão baixa um commit só, e o intervalo do PR não existiria na máquina." data-bad="Não. O padrão baixa só o último commit; o gitleaks precisa do intervalo de commits do PR."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">5. O job gitleaks está verde no PR. O que falta para ele virar portão?</p>
+    <div class="options">
+      <button>Ligar o modo estrito de branch atualizada</button>
+      <button>Gerar a licença gratuita no site oficial</button>
+      <button>Adicionar gitleaks aos checks obrigatórios do ruleset</button>
+    </div>
+    <p class="feedback" data-ok="Isso. Sem estar na lista de checks obrigatórios, o job só avisa." data-bad="Não. O job precisa entrar nos status checks obrigatórios do protege-main."></p>
+  </div>
+</div>
+
+<footer class="lesson">
+  <p><strong>Fonte principal:</strong> <a href="https://docs.github.com/en/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/remediating-a-leaked-secret">Docs do GitHub: Remediating a leaked secret</a>, para o porquê, e o <a href="https://github.com/gitleaks/gitleaks-action">README da gitleaks-action</a>, para o como.</p>
+  <p><strong>Referência rápida:</strong> <a href="../reference/segredos-gitleaks.html">Segredos e gitleaks</a> · <a href="../reference/glossario.html">Glossário</a>.</p>
+  <p>Ficou alguma dúvida, apareceu um achado na varredura que você não sabe classificar, ou o job falhou de um jeito estranho? Pergunte ao Claude no terminal. Ele é o seu professor nesta trilha.</p>
+</footer>
+
+</main>
+<script src="../assets/checklist.js"></script>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glossário DevSecOps</title>
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+  dl { margin: 1rem 0; }
+  dt { font-weight: 600; margin-top: 1rem; }
+  dd { margin: .2rem 0 0; }
+  dd .seen { font-size: .8rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Referência · termos usados nas aulas</p>
+  <h1>Glossário</h1>
+  <p class="subtitle">As aulas usam estes termos sempre com este sentido.</p>
+</header>
+
+<dl>
+  <dt>Bypass list</dt>
+  <dd>Quem pode ignorar as regras de um ruleset. No <code>protege-main</code>, fica vazia. <span class="seen">Aula <a href="../lessons/0001-protegendo-a-main.html">0001</a></span></dd>
+
+  <dt>Check obrigatório (required status check)</dt>
+  <dd>Um job da CI que precisa ficar verde para o merge ser liberado. É identificado pelo id do job no workflow. <span class="seen">Aula <a href="../lessons/0001-protegendo-a-main.html">0001</a></span></dd>
+
+  <dt>Entropia</dt>
+  <dd>O quanto um texto parece aleatório. O gitleaks a usa para separar chaves reais de textos comuns que casam com a mesma expressão regular. <span class="seen">Aula <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
+
+  <dt>Falso positivo</dt>
+  <dd>Um achado de ferramenta de segurança que não é problema de verdade. Só deve ser suprimido com uma justificativa escrita. <span class="seen">Aula <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
+
+  <dt>Fingerprint</dt>
+  <dd>A identificação única de um achado do gitleaks (<code>commit:arquivo:regra:linha</code>). É o que vai no <code>.gitleaksignore</code>. <span class="seen">Aula <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
+
+  <dt>Menor privilégio</dt>
+  <dd>Dar a cada peça só as permissões de que ela precisa. Num workflow, é o bloco <code>permissions</code>. <span class="seen">Aula <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
+
+  <dt>Modo estrito</dt>
+  <dd>A regra "Require branches to be up to date": a branch do PR precisa estar atualizada com a <code>main</code> antes do merge. <span class="seen">Aula <a href="../lessons/0001-protegendo-a-main.html">0001</a></span></dd>
+
+  <dt>Portão (gate)</dt>
+  <dd>Uma verificação que <em>bloqueia</em>, e não só avisa. Uma ferramenta vira portão quando o job dela entra nos checks obrigatórios. <span class="seen">Aulas <a href="../lessons/0001-protegendo-a-main.html">0001</a>, <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
+
+  <dt>Revogar</dt>
+  <dd>Invalidar uma chave no serviço que a emitiu. É o primeiro passo diante de um segredo vazado. <span class="seen">Aula <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
+
+  <dt>Ruleset</dt>
+  <dd>Uma lista nomeada de regras que o GitHub aplica a branches escolhidas. Vários rulesets se somam. <span class="seen">Aula <a href="../lessons/0001-protegendo-a-main.html">0001</a></span></dd>
+
+  <dt>Segredo</dt>
+  <dd>Qualquer valor que dá acesso a algo: senha, chave de API, token, chave privada. <span class="seen">Aula <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
+
+  <dt>Varredura de histórico</dt>
+  <dd>Uma análise de todos os commits do repositório, e não só dos novos. Feita uma vez, descobre se algo já vazou. <span class="seen">Aula <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
+</dl>
+
+</main>
+</body>
+</html>

@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Segredos e gitleaks</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Referência · da <a href="../lessons/0002-segredos-com-gitleaks.html">aula 0002</a></p>
+  <h1>Segredos e gitleaks</h1>
+</header>
+
+<h2>Segredo vazado: a ordem</h2>
+<ol>
+  <li><strong>Revogar ou trocar</strong> a chave no provedor. Ela já é considerada comprometida.</li>
+  <li>Conferir os logs de uso do serviço, para ver se alguém usou a chave.</li>
+  <li>Só então decidir se vale reescrever o histórico (exige force push, e o ruleset bloqueia).</li>
+</ol>
+<p>Apagar num commit novo <strong>não</strong> resolve: o commit antigo continua no histórico e em todo clone.</p>
+
+<h2>Varredura local do histórico</h2>
+<pre><code>docker run --rm -v "$PWD":/repo:Z ghcr.io/gitleaks/gitleaks:v8.30.1 \
+  git /repo --log-opts="--all" --redact -v
+echo $?   # 0 = limpo · 1 = achado ou erro</code></pre>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Comando / flag</th><th>Uso</th></tr>
+  <tr><td><code>git &lt;caminho&gt;</code></td><td>Analisa o histórico Git (via <code>git log -p</code>)</td></tr>
+  <tr><td><code>dir &lt;caminho&gt;</code></td><td>Analisa arquivos, sem histórico</td></tr>
+  <tr><td><code>stdin</code></td><td>Analisa o texto da entrada padrão</td></tr>
+  <tr><td><code>--log-opts="..."</code></td><td>Repassa opções ao <code>git log</code> (<code>--all</code>, intervalos)</td></tr>
+  <tr><td><code>--redact</code></td><td>Esconde o valor do segredo na saída</td></tr>
+  <tr><td><code>-v</code></td><td>Mostra cada achado</td></tr>
+  <tr><td><code>-f sarif</code></td><td>Relatório em SARIF (a aba Security usa esse formato; ver etapa 5)</td></tr>
+  <tr><td><code>detect</code> / <code>protect</code></td><td>Comandos antigos, descontinuados na v8.19.0</td></tr>
+</table>
+</div>
+
+<h2>Falso positivo</h2>
+<ul>
+  <li><strong>Arquivo:</strong> <code>.gitleaksignore</code> na raiz, um <code>Fingerprint</code> por linha (<code>commit:arquivo:regra:linha</code>), com um comentário <code>#</code> explicando o motivo.</li>
+  <li><strong>Na linha:</strong> comentário <code>gitleaks:allow</code>. Use pouco, porque qualquer pessoa pode escrever.</li>
+</ul>
+
+<h2>Job na CI: o que conferir</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Item</th><th>Valor</th><th>Por quê</th></tr>
+  <tr><td>Action</td><td><code>gitleaks/gitleaks-action@v3.0.0</code></td><td>Node 24; a v2 usa Node 20</td></tr>
+  <tr><td>Checkout</td><td><code>fetch-depth: 0</code></td><td>O intervalo de commits do PR precisa existir na máquina</td></tr>
+  <tr><td><code>GITHUB_TOKEN</code></td><td><code>secrets.GITHUB_TOKEN</code></td><td>Obrigatório em PR (lista os commits e comenta)</td></tr>
+  <tr><td><code>GITLEAKS_LICENSE</code></td><td>não usar</td><td>Só exigida para organizações</td></tr>
+  <tr><td><code>GITLEAKS_VERSION</code></td><td><code>8.30.1</code></td><td>Mesma versão da varredura local; sem o <code>v</code></td></tr>
+  <tr><td><code>permissions</code></td><td><code>contents: read</code>, <code>pull-requests: write</code></td><td>Menor privilégio</td></tr>
+  <tr><td>Check obrigatório</td><td><code>gitleaks</code> no <code>protege-main</code></td><td>Sem isso, o job só avisa</td></tr>
+</table>
+</div>
+<p>O que a action analisa: num PR, só os commits do PR; num push, só os commits enviados. O histórico antigo é responsabilidade da varredura local.</p>
+
+<h2>Prova de bloqueio</h2>
+<pre><code>echo "AWS_ACCESS_KEY_ID=AKIA$(tr -dc 'A-Z2-7' &lt;/dev/urandom | head -c16)" &gt; config-falsa.env</code></pre>
+<p><strong>Nunca</strong> use <code>AKIAIOSFODNN7EXAMPLE</code>: a regra <code>aws-access-token</code> tem uma exceção para valores que terminam em <code>EXAMPLE</code>.</p>
+
+<h2>Quando algo dá errado</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Sintoma</th><th>Causa provável</th></tr>
+  <tr><td>Docker: <code>permission denied</code> ao ler <code>/repo</code></td><td>Faltou o <code>:Z</code> no volume (SELinux do Fedora)</td></tr>
+  <tr><td><code>dubious ownership</code> no container</td><td>O dono da pasta é diferente do usuário do container: rode o binário do gitleaks direto, sem Docker</td></tr>
+  <tr><td>Job falha com erro de revisão/commit desconhecido</td><td>Checkout sem <code>fetch-depth: 0</code></td></tr>
+  <tr><td>Job encerra pedindo <code>GITHUB_TOKEN</code></td><td>Faltou a variável no step</td></tr>
+  <tr><td>Prova com chave falsa passou verde</td><td>A chave termina em <code>EXAMPLE</code>, ou tem entropia baixa (ex.: <code>AKIAAAAA...</code>)</td></tr>
+  <tr><td>Comentário no PR não aparece</td><td>Falta <code>pull-requests: write</code>; o achado continua no resumo do job</td></tr>
+</table>
+</div>
+
+<p class="source">Fontes: <a href="https://docs.github.com/en/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/remediating-a-leaked-secret">Remediating a leaked secret</a> · <a href="https://github.com/gitleaks/gitleaks">README do gitleaks</a> · <a href="https://github.com/gitleaks/gitleaks-action">README da gitleaks-action</a> · <a href="https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml">gitleaks.toml</a></p>
+
+</main>
+</body>
+</html>
