@@ -81,7 +81,8 @@ echo $?   # sem --error: 0 mesmo com achados</code></pre>
   <tr><td>Portão vermelho e aba Security sem dados</td><td>Portão antes do envio na ordem dos steps</td></tr>
   <tr><td>Job vermelho "do nada", sem mudar código</td><td>Regra nova no <code>p/default</code> (as regras não são fixadas pela versão)</td></tr>
   <tr><td>Saída 7</td><td>Faltou <code>--config</code></td></tr>
-  <tr><td>Prova passou verde</td><td>Usou <code>p/python</code> com <code>execute("..." + x)</code>, ou o arquivo não está no git</td></tr>
+  <tr><td>Prova passou verde</td><td>Usou <code>p/python</code> com <code>execute("..." + x)</code>, o arquivo não está no git, ou está em <code>tests/</code> (ignorada por padrão)</td></tr>
+  <tr><td>Prova derrubou também o <code>backend</code></td><td>Faltam anotações de tipo (regras <code>ANN</code> do ruff); teste com <code>uv run ruff check</code></td></tr>
 </table>
 </div>
 

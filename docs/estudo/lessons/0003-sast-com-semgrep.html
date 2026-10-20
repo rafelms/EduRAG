@@ -123,14 +123,20 @@ git switch -c teste/sql-concatenado</code></pre>
 
 <p>Em <code>app/teste_sast.py</code>:</p>
 
-<pre><code>from sqlalchemy import text
+<pre><code>from sqlalchemy import Result, text
+from sqlalchemy.orm import Session
 
 
-def buscar_por_nome(session, nome):
+def buscar_por_nome(session: Session, nome: str) -&gt; Result:
     sql = "SELECT * FROM documents WHERE filename = '" + nome + "'"
     return session.execute(text(sql))</code></pre>
 
-<p>Testei esse arquivo: o <code>ruff check</code> e o <code>ruff format --check</code> passam, e o Semgrep sai com 1 apontando <code>avoid-sqlalchemy-text</code>. Ou seja, só o <code>semgrep</code> deve ficar vermelho. Commit, push, PR. Espere o job vermelho, a anotação na linha 6 e o merge <strong>bloqueado</strong>. Tire o print, feche o PR sem mesclar e apague a branch.</p>
+<p>Testei esse arquivo com a configuração do projeto (<code>uv run ruff check</code>, que lê o <code>pyproject.toml</code>): o <code>ruff check</code> e o <code>ruff format --check</code> passam, e o Semgrep sai com 1 apontando <code>avoid-sqlalchemy-text</code>. Ou seja, só o <code>semgrep</code> deve ficar vermelho. Commit, push, PR. Espere o job vermelho, a anotação na linha 7 e o merge <strong>bloqueado</strong>. Tire o print, feche o PR sem mesclar e apague a branch.</p>
+
+<div class="note">
+  <p><strong>Por que os tipos:</strong> o projeto liga as regras <code>ANN</code> do ruff (anotação de tipo obrigatória fora de <code>tests/</code>). A primeira versão desta aula não tinha tipos e derrubava também o <code>backend</code>, porque eu tinha testado com o ruff <em>sem</em> o <code>pyproject.toml</code>. Lição de prova: teste sempre com a mesma configuração que a CI usa.</p>
+  <p><strong>Não ponha o arquivo em <code>tests/</code>:</strong> o Semgrep ignora essa pasta por padrão (são os 11 arquivos do <code>Scan skipped</code>), e a prova passaria verde sem ele ter olhado.</p>
+</div>
 
 <div class="note">
   <p><strong>Repare:</strong> um <code>nome</code> como <code>x' OR '1'='1</code> faria essa consulta devolver todos os documentos. A versão segura é a que a regra recomenda: <code>text("... WHERE filename = :nome")</code>, passando <code>{"nome": nome}</code> à parte. O banco recebe o valor separado do comando e nunca o interpreta como SQL.</p>
