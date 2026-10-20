@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAST com Semgrep</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Aula 0003 · Etapa 5 do <a href="../../pipeline-plano.md">pipeline-plano</a> · ~35 min</p>
+  <h1>SAST com Semgrep</h1>
+  <p class="subtitle">O segundo portão de segurança: código perigoso não entra na <code>main</code>, e cada achado aparece na aba <em>Security</em>.</p>
+</header>
+
+<p>Na <a href="0002-segredos-com-gitleaks.html">aula 0002</a>, o gitleaks passou a responder <em>"tem chave neste código?"</em>. A etapa 5 faz uma pergunta mais difícil: <em>"este código tem um jeito conhecido de ser atacado?"</em> O exemplo clássico, e a prova desta aula, é o SQL montado por concatenação de strings.</p>
+
+<h2>SAST × DAST</h2>
+
+<p>A OWASP chama as ferramentas de análise de código-fonte de <strong>SAST</strong> (<em>Static Application Security Testing</em>): elas examinam o código, sem executá-lo, em busca de falhas de segurança. Já os scanners de aplicação web, os <strong>DAST</strong> (<em>Dynamic</em>), analisam a aplicação <q>normalmente de fora</q>, com ela rodando.<span class="source"> (<a href="https://community.owasp.org/Source_Code_Analysis_Tools">OWASP: Source Code Analysis Tools</a> · <a href="https://community.owasp.org/Vulnerability_Scanning_Tools">OWASP: Vulnerability Scanning Tools</a>)</span></p>
+
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>SAST (esta aula)</th><th>DAST</th></tr>
+  <tr><td>Olha para</td><td>O código-fonte</td><td>A aplicação rodando</td></tr>
+  <tr><td>Quando roda</td><td>Em todo PR, antes do build</td><td>Depois do deploy num ambiente de teste</td></tr>
+  <tr><td>Mostra</td><td>Arquivo, linha e trecho</td><td>A URL e a requisição que funcionou</td></tr>
+  <tr><td>Ponto fraco</td><td><q>Muitos falsos positivos</q>; não vê configuração</td><td>Não diz em que linha está o erro</td></tr>
+</table>
+</div>
+
+<p>A OWASP aponta, entre os pontos fortes do SAST, que ele roda bem em CI e encontra com confiança problemas conhecidos como <strong>SQL injection</strong>. Entre os fracos, estão os falsos positivos e o fato de ele pegar <q>só uma pequena parte</q> das falhas.<span class="source"> (<a href="https://community.owasp.org/Source_Code_Analysis_Tools">OWASP</a>)</span> Por isso o SAST é <em>um</em> portão, não a defesa inteira.</p>
+
+<h2>O que é o Semgrep</h2>
+
+<p>O Semgrep lê o código e compara com <strong>regras</strong>. Cada regra é um padrão de código (não uma regex de texto, como no gitleaks) com uma severidade e uma mensagem. As regras vêm em <strong>conjuntos de regras do Semgrep</strong> no registro público, como <code>p/default</code> e <code>p/python</code>.<span class="source"> (<a href="https://docs.semgrep.dev/cli-reference">CLI reference</a>)</span></p>
+
+<div class="note">
+  <p><strong>Cuidado com o nome:</strong> o Semgrep chama os conjuntos de regras de <em>rulesets</em>, mas não têm nada a ver com o <em>ruleset</em> <code>protege-main</code> do GitHub. Nesta trilha, <strong>ruleset</strong> é sempre o do GitHub, e o do Semgrep é <strong>conjunto de regras</strong>. Veja o <a href="../reference/glossario.html">glossário</a>.</p>
+</div>
+
+<p>Testei os conjuntos antes de escrever esta aula, com o Semgrep 1.180.0, num arquivo com duas consultas vulneráveis:</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Código</th><th><code>p/python</code></th><th><code>p/default</code></th></tr>
+  <tr><td><code>session.execute("..." + nome)</code></td><td>não apontou</td><td><code>sqlalchemy-execute-raw-query</code></td></tr>
+  <tr><td><code>session.execute(text(sql))</code>, com <code>sql</code> concatenado</td><td><code>avoid-sqlalchemy-text</code></td><td><code>avoid-sqlalchemy-text</code></td></tr>
+</table>
+</div>
+
+<p>Por isso a aula usa o <code>p/default</code>: ele cobre mais casos e, no mesmo scan, inclui regras de Python, TypeScript e YAML do GitHub Actions. A regra <code>sqlalchemy-execute-raw-query</code> é classificada como <strong>CWE-89</strong> (SQL injection) e recomenda o <code>text()</code> com parâmetros nomeados.<span class="source"> (<a href="https://github.com/semgrep/semgrep-rules/blob/develop/python/sqlalchemy/security/sqlalchemy-execute-raw-query.yaml">regra no semgrep-rules</a>)</span></p>
+
+<h2>SARIF: o formato da aba Security</h2>
+
+<p>O <strong>SARIF</strong> é um formato JSON padronizado para resultados de análise estática. A aba <em>Security → Code scanning</em> do GitHub aceita SARIF de ferramentas de terceiros, e a code scanning só exige licença em repositórios <em>privados</em>; o seu é público.<span class="source"> (<a href="https://docs.github.com/en/code-security/code-scanning/introduction-to-code-scanning/about-code-scanning">About code scanning</a>)</span> O envio é feito pela action <code>github/codeql-action/upload-sarif@v4</code>, e o job precisa da permissão <code>security-events: write</code>, que a documentação diz ser <q>obrigatória para todos os workflows</q> de envio.<span class="source"> (<a href="https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/uploading-a-sarif-file-to-github">Uploading a SARIF file</a>)</span></p>
+
+<div class="flow" aria-label="Caminho do relatório">
+  <span>Semgrep gera semgrep.sarif</span><i>→</i><span>upload-sarif envia</span><i>→</i><span class="gate">aba Security + anotações no PR</span>
+</div>
+
+<h2>Parte 1: relatório primeiro</h2>
+
+<p>A regra do Bloco B é: rodar em modo de relatório, entender o que aparece e só depois virar portão. Rode na raiz do projeto, com a mesma versão que vai na CI:</p>
+
+<pre><code>uvx semgrep@1.180.0 scan --config p/default --metrics off</code></pre>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Pedaço</th><th>Para quê</th></tr>
+  <tr><td><code>uvx semgrep@1.180.0</code></td><td>Roda o Semgrep numa versão fixa, sem instalar no projeto. É o mesmo <code>uv</code> do seu backend.</td></tr>
+  <tr><td><code>scan</code></td><td>O modo sem conta. O <code>semgrep ci</code> da documentação exige o <code>SEMGREP_APP_TOKEN</code> da plataforma paga.<span class="source"> (<a href="https://docs.semgrep.dev/semgrep-ci/sample-ci-configs">Sample CI configs</a>)</span></td></tr>
+  <tr><td><code>--config p/default</code></td><td>O conjunto de regras. É baixado do registro a cada execução.</td></tr>
+  <tr><td><code>--metrics off</code></td><td>Por padrão (<code>auto</code>), o Semgrep envia métricas sempre que baixa regras do registro.<span class="source"> (<a href="https://docs.semgrep.dev/cli-reference">CLI reference</a>)</span></td></tr>
+</table>
+</div>
+
+<p><strong>Vão aparecer achados.</strong> Antes de abrir a resposta abaixo, classifique cada um: está no código da aplicação? A que etapa do plano ele pertence?</p>
+
+<details>
+  <summary>Minha classificação (abra depois de fazer a sua)</summary>
+  <p>Na minha rodada, em 20/10/2026, apareceram 8 achados e <strong>nenhum no código da aplicação</strong>. O <code>text("SELECT 1")</code> do <code>/ready</code> não foi apontado, porque é uma string fixa.</p>
+  <ul>
+    <li>7 × <code>github-actions-mutable-action-tag</code> (WARNING): actions referenciadas por tag, como <code>@v7</code>. É exatamente o item "fixar as actions por SHA" da <strong>etapa 6</strong>.</li>
+    <li>1 × <code>uv-missing-dependency-cooldown</code> (MEDIUM): o <code>pyproject.toml</code> não manda o uv esperar alguns dias antes de aceitar pacotes recém-publicados. Também é cadeia de suprimentos, também da <strong>etapa 6</strong>.</li>
+  </ul>
+  <p>Conclusão: se o portão barrasse qualquer achado, ele ficaria vermelho hoje por causa de trabalho que o plano reserva para a etapa seguinte. Daí o desenho da Parte 2.</p>
+</details>
+
+<div class="note">
+  <p><strong>Trade-off que fica registrado:</strong> fixar o Semgrep em 1.180.0 fixa o <em>motor</em>, mas o <code>p/default</code> é baixado do registro a cada execução, então as regras podem mudar sem você mexer em nada. Se um dia o job ficar vermelho "do nada", a primeira hipótese é uma regra nova.</p>
+</div>
+
+<h2>Parte 2: o job na CI</h2>
+
+<p>O job vai em <code>.github/workflows/security.yml</code>, ao lado do <code>gitleaks</code>. O desenho é este: <strong>tudo vai para a aba Security, mas só severidade ERROR bloqueia</strong>. Os 8 avisos ficam visíveis lá como lista de tarefas da etapa 6.</p>
+
+<ol class="checklist" data-key="0003-job">
+  <li><strong>Um job com id <code>semgrep</code></strong> em <code>ubuntu-24.04</code>, no mesmo arquivo e com os mesmos gatilhos.</li>
+  <li><strong>Bloco <code>permissions</code>:</strong> <code>contents: read</code> e <code>security-events: write</code>. Este job não comenta no PR, então não precisa de <code>pull-requests</code>.</li>
+  <li><strong>Checkout.</strong> Precisa de <code>fetch-depth: 0</code>? Decida sozinho. (É a pergunta 2 do quiz.)</li>
+  <li><strong>Instalar o uv</strong> com a mesma action do <code>ci.yml</code>.</li>
+  <li><strong>Step "relatório":</strong> o comando da Parte 1, acrescentando <code>--sarif-output=semgrep.sarif</code>. Sem <code>--error</code>, ele sai com 0 mesmo com achados.<span class="source"> (<a href="https://docs.semgrep.dev/cli-reference">CLI reference, exit codes</a>)</span></li>
+  <li><strong>Step de envio:</strong> <code>github/codeql-action/upload-sarif@v4</code>, com o parâmetro <code>sarif_file: semgrep.sarif</code>. O parâmetro <code>category</code> é opcional e serve para separar resultados de ferramentas diferentes.</li>
+  <li><strong>Step "portão":</strong> o mesmo comando, agora com <code>--severity ERROR --error</code>. Com <code>--error</code>, o Semgrep sai com 1 quando há achado, e o step fica vermelho.</li>
+  <li><strong>Confira a ordem.</strong> Os steps rodam em sequência, e um step que falha impede os seguintes (está nas suas <a href="../../estudo-ci.md">anotações</a>). Em que ordem o envio e o portão precisam ficar?</li>
+</ol>
+
+<div class="note">
+  <p><strong>Atenção à estrutura YAML</strong> (o tropeço da etapa 4): cada step é <em>um</em> item da lista, começando com <code>-</code>. O <code>uses</code> e o <code>with</code> de uma action ficam <em>no mesmo item</em>, com o <code>with</code> alinhado ao <code>uses</code>. Desta vez eu aponto as linhas com erro e você corrige.</p>
+</div>
+
+<p>Quando terminar, me mostre o arquivo antes do push. Depois, abra o PR. Com o job <code>semgrep</code> verde, adicione <code>semgrep</code> aos checks obrigatórios do <code>protege-main</code>. Depois do merge, confira a aba <em>Security → Code scanning</em>: os 8 avisos devem estar lá.</p>
+
+<h2>Prove o portão</h2>
+
+<p>O plano diz: <em>"PR com SQL montado por concatenação de string → apontado."</em> Crie um arquivo à parte, para não mexer no código de verdade:</p>
+
+<pre><code>git switch main &amp;&amp; git pull
+git switch -c teste/sql-concatenado</code></pre>
+
+<p>Em <code>app/teste_sast.py</code>:</p>
+
+<pre><code>from sqlalchemy import text
+
+
+def buscar_por_nome(session, nome):
+    sql = "SELECT * FROM documents WHERE filename = '" + nome + "'"
+    return session.execute(text(sql))</code></pre>
+
+<p>Testei esse arquivo: o <code>ruff check</code> e o <code>ruff format --check</code> passam, e o Semgrep sai com 1 apontando <code>avoid-sqlalchemy-text</code>. Ou seja, só o <code>semgrep</code> deve ficar vermelho. Commit, push, PR. Espere o job vermelho, a anotação na linha 6 e o merge <strong>bloqueado</strong>. Tire o print, feche o PR sem mesclar e apague a branch.</p>
+
+<div class="note">
+  <p><strong>Repare:</strong> um <code>nome</code> como <code>x' OR '1'='1</code> faria essa consulta devolver todos os documentos. A versão segura é a que a regra recomenda: <code>text("... WHERE filename = :nome")</code>, passando <code>{"nome": nome}</code> à parte. O banco recebe o valor separado do comando e nunca o interpreta como SQL.</p>
+</div>
+
+<h3>E se um achado for falso positivo?</h3>
+<p>Mesmo princípio da etapa 4: suprimir só com justificativa. No Semgrep, isso é um comentário <code># nosemgrep: &lt;id-da-regra&gt;</code> na linha do achado ou na anterior. Sempre com o id, para não silenciar outras regras.<span class="source"> (<a href="https://docs.semgrep.dev/ignoring-files-folders-code">Ignore files, folders, and code</a>)</span> A sintaxe não tem campo de motivo, então escreva o porquê num comentário ao lado. O <code>.semgrepignore</code> serve para pular arquivos inteiros e é uma arma grande demais para um achado só.</p>
+
+<h2>Recupere da memória</h2>
+<p>Responda sem voltar ao texto. As duas últimas perguntas retomam a aula 0002.</p>
+
+<div class="quiz">
+  <div class="question" data-answer="1">
+    <p class="prompt">1. O que diferencia o SAST do DAST?</p>
+    <div class="options">
+      <button>SAST roda na nuvem; DAST roda na sua máquina</button>
+      <button>SAST lê o código; DAST ataca a aplicação rodando</button>
+      <button>SAST só acha segredos; DAST acha as dependências vulneráveis</button>
+    </div>
+    <p class="feedback" data-ok="Isso. Estático = código parado; dinâmico = aplicação em execução, vista de fora." data-bad="Não. SAST analisa o código-fonte sem executá-lo; DAST testa a aplicação rodando, de fora."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">2. O job do Semgrep precisa de fetch-depth: 0 no checkout?</p>
+    <div class="options">
+      <button>Sim, porque ele analisa cada commit do PR</button>
+      <button>Sim, porque o SARIF exige o histórico completo</button>
+      <button>Não, porque ele analisa os arquivos do checkout</button>
+    </div>
+    <p class="feedback" data-ok="Certo. O semgrep scan lê os arquivos como estão. Quem percorre commits (D^..D) é o gitleaks." data-bad="Não. O semgrep scan lê os arquivos do checkout; quem precisa do intervalo de commits do PR é o gitleaks."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">3. Por que o step do portão vem depois do envio do SARIF?</p>
+    <div class="options">
+      <button>Se o portão falhar antes, o relatório não sobe</button>
+      <button>O envio precisa do código de saída do portão</button>
+      <button>O GitHub só aceita SARIF de jobs sem falhas</button>
+    </div>
+    <p class="feedback" data-ok="Isso. Um step que falha impede os seguintes; o relatório precisa subir mesmo quando o portão barra." data-bad="Não. Steps rodam em sequência e um step vermelho impede os seguintes: o portão antes do envio esconderia o relatório."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">4. Por que o portão usa --severity ERROR, por enquanto?</p>
+    <div class="options">
+      <button>Avisos de severidade baixa nunca são problemas reais</button>
+      <button>O SARIF não aceita achados com outras severidades</button>
+      <button>Os avisos atuais pertencem à etapa 6 do plano</button>
+    </div>
+    <p class="feedback" data-ok="Certo. São tags de actions e cooldown do uv: cadeia de suprimentos, trabalho da etapa 6. Eles continuam visíveis na aba Security." data-bad="Não. Os avisos são reais, mas são da etapa 6 (cadeia de suprimentos). Ficam na aba Security até lá."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">5. Um achado é falso positivo. Qual é a supressão certa?</p>
+    <div class="options">
+      <button>Tirar o semgrep da lista de checks obrigatórios</button>
+      <button>Comentário nosemgrep com id da regra e motivo</button>
+      <button>Adicionar o arquivo inteiro ao .semgrepignore do repositório</button>
+    </div>
+    <p class="feedback" data-ok="Isso. Só aquela regra, só aquela linha, com o porquê escrito." data-bad="Não. Suprima o mínimo possível: # nosemgrep: id-da-regra na linha, com a justificativa ao lado."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">6. Num step que chama uma action, onde fica o with?</p>
+    <div class="options">
+      <button>No mesmo item da lista que o uses</button>
+      <button>Num item separado da lista, logo depois dele</button>
+      <button>No nível do job, junto com o runs-on</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Um step é um item (-); uses e with são chaves desse mesmo item." data-bad="Não. O with é parâmetro da action: fica no mesmo item da lista que o uses, alinhado a ele."></p>
+  </div>
+</div>
+
+<footer class="lesson">
+  <p><strong>Fonte principal:</strong> <a href="https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/uploading-a-sarif-file-to-github">Docs do GitHub: Uploading a SARIF file</a>, para o envio, e a <a href="https://docs.semgrep.dev/cli-reference">CLI reference do Semgrep</a>, para as flags. Para o porquê, a página da <a href="https://community.owasp.org/Source_Code_Analysis_Tools">OWASP sobre SAST</a>, que é curta.</p>
+  <p><strong>Referência rápida:</strong> <a href="../reference/sast-semgrep.html">SAST e Semgrep</a> · <a href="../reference/segredos-gitleaks.html">Segredos e gitleaks</a> · <a href="../reference/glossario.html">Glossário</a>.</p>
+  <p>Apareceu um achado que você não sabe classificar, o envio do SARIF falhou ou a aba Security ficou vazia? Pergunte ao Claude no terminal. Ele é o seu professor nesta trilha.</p>
+</footer>
+
+</main>
+<script src="../assets/checklist.js"></script>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

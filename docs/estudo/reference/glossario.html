@@ -28,6 +28,15 @@
   <dt>Check obrigatório (required status check)</dt>
   <dd>Um job da CI que precisa ficar verde para o merge ser liberado. É identificado pelo id do job no workflow. <span class="seen">Aula <a href="../lessons/0001-protegendo-a-main.html">0001</a></span></dd>
 
+  <dt>Cadeia de suprimentos (supply chain)</dt>
+  <dd>Tudo o que o seu código usa e não foi você que escreveu: bibliotecas, imagens base e actions. Um ataque a qualquer elo chega até você. <span class="seen">Aula <a href="../lessons/0003-sast-com-semgrep.html">0003</a> (detalhe na etapa 6)</span></dd>
+
+  <dt>Conjunto de regras do Semgrep</dt>
+  <dd>Um pacote de regras do registro do Semgrep, como <code>p/default</code>. O Semgrep o chama de <em>ruleset</em>, mas nesta trilha <strong>ruleset</strong> é só o do GitHub. <span class="seen">Aula <a href="../lessons/0003-sast-com-semgrep.html">0003</a></span></dd>
+
+  <dt>DAST</dt>
+  <dd><em>Dynamic Application Security Testing</em>: testa a aplicação rodando, de fora, como um atacante faria. <span class="seen">Aula <a href="../lessons/0003-sast-com-semgrep.html">0003</a></span></dd>
+
   <dt>Entropia</dt>
   <dd>O quanto um texto parece aleatório. O gitleaks a usa para separar chaves reais de textos comuns que casam com a mesma expressão regular. <span class="seen">Aula <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
 
@@ -52,8 +61,20 @@
   <dt>Ruleset</dt>
   <dd>Uma lista nomeada de regras que o GitHub aplica a branches escolhidas. Vários rulesets se somam. <span class="seen">Aula <a href="../lessons/0001-protegendo-a-main.html">0001</a></span></dd>
 
+  <dt>SARIF</dt>
+  <dd>Formato JSON padronizado para resultados de análise estática. É o que a aba <em>Security → Code scanning</em> do GitHub recebe. <span class="seen">Aula <a href="../lessons/0003-sast-com-semgrep.html">0003</a></span></dd>
+
+  <dt>SAST</dt>
+  <dd><em>Static Application Security Testing</em>: analisa o código-fonte sem executá-lo, em busca de padrões perigosos conhecidos. <span class="seen">Aula <a href="../lessons/0003-sast-com-semgrep.html">0003</a></span></dd>
+
   <dt>Segredo</dt>
   <dd>Qualquer valor que dá acesso a algo: senha, chave de API, token, chave privada. <span class="seen">Aula <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
+
+  <dt>Severidade</dt>
+  <dd>O peso que uma regra dá ao achado (no Semgrep: INFO, WARNING, ERROR). Um portão pode barrar só a partir de uma severidade. <span class="seen">Aula <a href="../lessons/0003-sast-com-semgrep.html">0003</a></span></dd>
+
+  <dt>SQL injection</dt>
+  <dd>Quando um valor vindo de fora é colado no texto da consulta e passa a ser interpretado como SQL. A defesa é passar o valor como parâmetro, separado do comando (CWE-89). <span class="seen">Aula <a href="../lessons/0003-sast-com-semgrep.html">0003</a></span></dd>
 
   <dt>Varredura de histórico</dt>
   <dd>Uma análise de todos os commits do repositório, e não só dos novos. Feita uma vez, descobre se algo já vazou. <span class="seen">Aula <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
