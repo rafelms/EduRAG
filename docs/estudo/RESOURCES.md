@@ -21,6 +21,19 @@
 - [Docs do GitHub: Approving a pull request with required reviews](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/approving-a-pull-request-with-required-reviews)
   Fonte da regra "o autor não aprova o próprio PR". Usar para: decidir quantas aprovações exigir num projeto solo.
 
+- [OWASP: Source Code Analysis Tools](https://community.owasp.org/Source_Code_Analysis_Tools) e [Vulnerability Scanning Tools](https://community.owasp.org/Vulnerability_Scanning_Tools)
+  Definições de SAST e DAST, com pontos fortes e fracos (falsos positivos, não vê configuração). Usar para: etapa 5, o porquê.
+- [Semgrep: CLI reference](https://docs.semgrep.dev/cli-reference)
+  Flags do `semgrep scan` (`--config`, `--sarif-output`, `--severity`, `--error`, `--metrics`) e códigos de saída. Usar para: escrever o job.
+- [Semgrep: Sample CI configs](https://docs.semgrep.dev/semgrep-ci/sample-ci-configs)
+  O `semgrep ci` exige `SEMGREP_APP_TOKEN`; sem conta, é `semgrep scan`. Usar para: entender por que não usamos o exemplo padrão.
+- [Semgrep: Ignoring files, folders, and code](https://docs.semgrep.dev/ignoring-files-folders-code)
+  `# nosemgrep: id` e `.semgrepignore`. Usar para: falso positivo.
+- [Regras do Semgrep (`semgrep-rules`)](https://github.com/semgrep/semgrep-rules)
+  O YAML de cada regra, com CWE e a correção recomendada. Usar para: entender por que algo foi ou não foi apontado.
+- [Docs do GitHub: Uploading a SARIF file](https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/uploading-a-sarif-file-to-github)
+  `upload-sarif@v4`, `security-events: write` e `category`. Usar para: etapa 5 e qualquer ferramenta que gere SARIF (Trivy na etapa 7).
+
 ## Sabedoria (comunidades)
 
 - [GitHub Community: discussões de Actions](https://github.com/orgs/community/discussions/categories/actions)
@@ -33,4 +46,5 @@
 - Fonte oficial sobre o limite de tempo para um check aparecer na lista de checks obrigatórios.
 - Qual versão do gitleaks a `gitleaks-action@v3.0.0` usa por padrão (não está documentada; por isso fixamos `GITLEAKS_VERSION`).
 - ~~Se o *push protection* do GitHub barra um ID de chave da AWS sozinho.~~ Observado em 19/10/2026: **não barra** (o push do PR #6 passou); só o gitleaks pegou. Ainda sem fonte oficial.
+- Se a imagem `semgrep/semgrep` (Alpine) roda actions JavaScript como o `upload-sarif` dentro de um job `container:`. Não achei fonte oficial; por isso a aula 0003 roda o Semgrep pelo `uvx` no runner normal.
 - [GitHub Status](https://www.githubstatus.com): primeiro lugar a olhar quando os checks ficam presos em *Queued* sem log (foi um incidente do Actions no PR #6).

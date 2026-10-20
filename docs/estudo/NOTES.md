@@ -12,4 +12,5 @@
 - 19/10/2026: errou a questão 4 da aula 0002 (`fetch-depth: 0`). Explicado com clone raso + intervalo `D^..D`. Retomar na próxima aula como recuperação espaçada (ex.: o Semgrep precisa de `fetch-depth: 0`?).
 - 19/10/2026: etapa 4 concluída e provada (PR #6). O primeiro `security.yml` dele tinha erros de estrutura YAML (`with` fora de step, `name` fora do item da lista, `variables` no lugar de `env`, sem checkout). Ele pediu que eu corrigisse e eu corrigi, explicando cada erro. Na próxima, só apontar as linhas e deixar a correção com ele.
 - Ele não tem o `gh` instalado; para checar runs e checks, uso a API pública do GitHub com `curl`.
-- Próximo: aula 0003, etapa 5 (SAST com Semgrep e SARIF).
+- 20/10/2026: aula 0003 criada (etapa 5). Testei antes com Semgrep 1.180.0: `p/default` no repo dá 8 achados, todos de cadeia de suprimentos (7 tags de action, 1 cooldown do uv), nenhum no código da app. Desenho escolhido: SARIF com tudo, portão só com `--severity ERROR`. O `p/python` **não** pega `execute("..." + x)`; o `p/default` pega. A prova usa `text(sql_concatenado)` em `app/teste_sast.py` (ruff passa). Na revisão do YAML, **só apontar as linhas**; ele corrige.
+- Próximo depois da 0003: etapa 6 (dependências). Os 8 avisos do Semgrep viram a lista de tarefas dela.

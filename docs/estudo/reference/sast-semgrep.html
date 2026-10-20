@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SAST e Semgrep</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Referência · da <a href="../lessons/0003-sast-com-semgrep.html">aula 0003</a></p>
+  <h1>SAST e Semgrep</h1>
+</header>
+
+<h2>SAST × DAST</h2>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>SAST</th><th>DAST</th></tr>
+  <tr><td>Analisa</td><td>Código-fonte, sem executar</td><td>Aplicação rodando, de fora</td></tr>
+  <tr><td>Na pipeline</td><td>Em todo PR</td><td>Depois do deploy de teste</td></tr>
+  <tr><td>Fraqueza</td><td>Falsos positivos; não vê configuração</td><td>Não aponta a linha</td></tr>
+</table>
+</div>
+
+<h2>Rodar local</h2>
+<pre><code>uvx semgrep@1.180.0 scan --config p/default --metrics off
+echo $?   # sem --error: 0 mesmo com achados</code></pre>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Flag</th><th>Uso</th></tr>
+  <tr><td><code>scan</code></td><td>Modo sem conta (o <code>semgrep ci</code> exige <code>SEMGREP_APP_TOKEN</code>)</td></tr>
+  <tr><td><code>--config p/default</code></td><td>Conjunto de regras do registro; baixado a cada execução</td></tr>
+  <tr><td><code>--metrics off</code></td><td>Não envia métricas ao baixar regras</td></tr>
+  <tr><td><code>--sarif-output=arq.sarif</code></td><td>Grava uma cópia em SARIF</td></tr>
+  <tr><td><code>--severity ERROR</code></td><td>Só regras dessa severidade (INFO, WARNING, ERROR)</td></tr>
+  <tr><td><code>--error</code></td><td>Sai com 1 se houver achado (vira portão)</td></tr>
+  <tr><td><code>--exclude PADRÃO</code></td><td>Pula arquivos ou pastas</td></tr>
+</table>
+</div>
+<p><strong>Códigos de saída:</strong> 0 ok · 1 achados (só com <code>--error</code>) · 2 erro fatal · 7 configuração ausente.</p>
+
+<h2>Job na CI: o que conferir</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Item</th><th>Valor</th><th>Por quê</th></tr>
+  <tr><td>Id do job</td><td><code>semgrep</code></td><td>Vira check obrigatório; único entre workflows</td></tr>
+  <tr><td><code>permissions</code></td><td><code>contents: read</code>, <code>security-events: write</code></td><td>Ler o código e enviar SARIF</td></tr>
+  <tr><td>Checkout</td><td>padrão</td><td><code>scan</code> lê arquivos, não commits</td></tr>
+  <tr><td>Relatório</td><td>scan + <code>--sarif-output</code>, sem <code>--error</code></td><td>Tudo vai para a aba Security</td></tr>
+  <tr><td>Envio</td><td><code>github/codeql-action/upload-sarif@v4</code>, <code>sarif_file</code></td><td>Antes do portão</td></tr>
+  <tr><td>Portão</td><td>scan + <code>--severity ERROR --error</code></td><td>Último step: barra só o grave</td></tr>
+  <tr><td>Check obrigatório</td><td><code>semgrep</code> no <code>protege-main</code></td><td>Sem isso, só avisa</td></tr>
+</table>
+</div>
+
+<h2>Regras de SQL (SQLAlchemy) testadas</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Código</th><th>Regra no <code>p/default</code></th></tr>
+  <tr><td><code>session.execute("..." + x)</code></td><td><code>sqlalchemy-execute-raw-query</code> (o <code>p/python</code> não pega)</td></tr>
+  <tr><td><code>session.execute(text(sql_concatenado))</code></td><td><code>avoid-sqlalchemy-text</code></td></tr>
+  <tr><td><code>text("SELECT 1")</code></td><td>nada (string fixa)</td></tr>
+  <tr><td><code>text("... = :nome")</code> + <code>{"nome": x}</code></td><td>nada: é a forma segura</td></tr>
+</table>
+</div>
+
+<h2>Falso positivo</h2>
+<ul>
+  <li><strong>Na linha:</strong> <code># nosemgrep: &lt;id-da-regra&gt;</code> na linha do achado ou na anterior, sempre com o id e com o motivo num comentário ao lado.</li>
+  <li><strong>Arquivo inteiro:</strong> <code>.semgrepignore</code> (sintaxe de <code>.gitignore</code>). Use pouco.</li>
+</ul>
+
+<h2>Quando algo dá errado</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Sintoma</th><th>Causa provável</th></tr>
+  <tr><td>Envio falha com erro de permissão</td><td>Falta <code>security-events: write</code></td></tr>
+  <tr><td>Portão vermelho e aba Security sem dados</td><td>Portão antes do envio na ordem dos steps</td></tr>
+  <tr><td>Job vermelho "do nada", sem mudar código</td><td>Regra nova no <code>p/default</code> (as regras não são fixadas pela versão)</td></tr>
+  <tr><td>Saída 7</td><td>Faltou <code>--config</code></td></tr>
+  <tr><td>Prova passou verde</td><td>Usou <code>p/python</code> com <code>execute("..." + x)</code>, ou o arquivo não está no git</td></tr>
+</table>
+</div>
+
+<p class="source">Fontes: <a href="https://docs.semgrep.dev/cli-reference">Semgrep CLI reference</a> · <a href="https://docs.semgrep.dev/semgrep-ci/sample-ci-configs">Sample CI configs</a> · <a href="https://docs.semgrep.dev/ignoring-files-folders-code">Ignoring code</a> · <a href="https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/uploading-a-sarif-file-to-github">Uploading a SARIF file</a> · <a href="https://community.owasp.org/Source_Code_Analysis_Tools">OWASP SAST</a></p>
+
+</main>
+</body>
+</html>
