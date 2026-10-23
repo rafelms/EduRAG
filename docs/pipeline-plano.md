@@ -1,6 +1,6 @@
 # EduRAG — Plano de implementação da pipeline (F2 → deploy na AWS)
 
-> Atualizado em 19/10/2026. Referências: [spec.md](spec.md) e [progresso.md](progresso.md).
+> Atualizado em 23/10/2026. Referências: [spec.md](spec.md) e [progresso.md](progresso.md).
 > Regra da Camada B: **você escreve os workflows**; a IA explica e revisa.
 
 ## Visão geral
@@ -81,28 +81,41 @@ Para cada ferramenta: primeiro rodar em modo de relatório, corrigir o que apare
 
 ### Etapa 5 — Análise estática (SAST)
 
-- [ ] Semgrep cobrindo Python e TypeScript (ou Bandit no backend + regras de segurança do ESLint no front).
-- [ ] Resultados enviados para a aba *Security* do GitHub (formato SARIF).
+- [x] Semgrep cobrindo Python e TypeScript (`p/default`, job `semgrep` no `security.yml`, check obrigatório no ruleset `protege-main`).
+- [x] Resultados enviados para a aba *Security* do GitHub (formato SARIF).
 
 *Teste de bloqueio:* PR com SQL montado por concatenação de string → apontado.
+**Provado em 20/10/2026 ([PR #10](https://github.com/rafelms/EduRAG/pull/10)):** `semgrep` falhou com `avoid-sqlalchemy-text` na linha 7 de `app/teste_sast.py`; `backend`, `frontend` e `gitleaks` passaram; merge bloqueado. O PR foi fechado sem merge. O portão barra só `--severity ERROR`; os avisos restantes viraram a lista de tarefas da etapa 6.
 *Para estudar:* SAST × DAST, falso positivo e como suprimir com justificativa.
 
 ### Etapa 6 — Dependências
 
-- [ ] `.github/dependabot.yml` para Python, npm, Docker e GitHub Actions (é arquivo de configuração, não job).
-- [ ] `trivy fs` no repositório e `npm audit` no front, falhando em severidade alta ou crítica.
-- [ ] Fixar as actions usadas por versão ou SHA.
+**Em andamento: parte 1 concluída, parte 2 pendente.** Aulas: [0004](estudo/lessons/0004-vulnerabilidades-com-trivy.html) (portão de vulnerabilidades) e [0005](estudo/lessons/0005-cadeia-de-suprimentos.html) (cadeia de suprimentos).
+
+*Parte 1: portão de vulnerabilidades (aula 0004)*
+- [x] Corrigir o CRITICAL que o Trivy já achava (`certifi 2026.7.22` → `2026.10.19`): [PR #12](https://github.com/rafelms/EduRAG/pull/12).
+- [x] `trivy fs` (job `trivy-fs`, `trivy-action` fixada por SHA, falha em HIGH/CRITICAL com `ignore-unfixed`) e `npm audit` (job `npm-audit`, `--audit-level=high`) no `security.yml`, os dois como checks obrigatórios do `protege-main`: [PR #13](https://github.com/rafelms/EduRAG/pull/13).
 
 *Teste de bloqueio:* PR adicionando uma versão antiga e vulnerável de alguma biblioteca → pipeline falha.
-*Para estudar:* SCA, CVE, por que fixar as actions é segurança de cadeia de suprimentos.
+**Provado em 23/10/2026 ([PR #14](https://github.com/rafelms/EduRAG/pull/14)):** [`trivy-fs` falhou](https://github.com/rafelms/EduRAG/actions/runs/39982005609/job/120511410590) com `pyyaml 5.3` (2 CRITICAL) no `uv.lock` e `lodash 4.17.20` (2 HIGH) no `package-lock.json`; [`npm-audit` falhou](https://github.com/rafelms/EduRAG/actions/runs/39982005609/job/120511411002) com `lodash`; `backend`, `frontend` e `gitleaks` passaram; merge bloqueado. O PR foi fechado sem merge. Na primeira tentativa, o `backend` caiu por `uv.lock` fora de sincronia (faltou `uv lock`) e o Trivy viu o `uv.lock` limpo: vermelho pelo motivo errado não vale como prova.
+
+*Parte 2: cadeia de suprimentos (aula 0005)*
+- [ ] Fixar por SHA todas as actions de `ci.yml` e `security.yml` (hoje o Semgrep acusa 12 usos por tag), com o comentário `# vX.Y.Z`.
+- [ ] Cooldown no uv (`exclude-newer`) e uv novo no `Dockerfile` (o `uv:0.5` não lê a duração relativa). Decidir o que fazer com o `certifi`, que o cooldown rebaixaria.
+- [ ] `.github/dependabot.yml` para Python (`uv`), npm, Docker e GitHub Actions (é arquivo de configuração, não job).
+
+*Pronto quando:* o Semgrep não acusa mais cadeia de suprimentos e o Dependabot abriu o primeiro PR.
+*Para estudar:* SCA, CVE, por que fixar as actions é segurança de cadeia de suprimentos (caso real: o ataque à `trivy-action` em março de 2026).
 
 ### Etapa 7 — Build e scan das imagens
 
-- [ ] Build das imagens `api` e `front` (Nginx servindo o build do React) com cache do Buildx.
-- [ ] `trivy image` em cada uma, falhando em CRITICAL.
-- [ ] Conferir que as duas rodam como usuário não-root.
+**Depende da etapa 6 inteira** (uv novo no `Dockerfile`, actions por SHA). Aula: [0006](estudo/lessons/0006-build-e-scan-de-imagens.html). Situação medida em 23/10/2026 (Trivy 0.76.1): `api` e `front` com 0 CRITICAL; as duas já rodam sem root (uid 10001 e 101); 44 HIGH em cada, sem correção no `api` e com correção no `front`.
 
-*Pronto quando:* as imagens só existem se passaram no scan.
+- [ ] **PR 1 (`ci/imagem-api`):** novo `.github/workflows/build.yml` com o job `imagem-api`: checkout → Buildx → build (`push: false`, `load: true`, cache `type=gha` com `scope` próprio) → `trivy image` falhando em CRITICAL → checagem de não-root (`id -u` diferente de `0`). Actions fixadas por SHA desde o início.
+- [ ] **PR 2 (`ci/imagem-front`):** job `imagem-front` (contexto `frontend/`, Nginx servindo o build do React), e os dois jobs como checks obrigatórios do `protege-main`.
+- [ ] **PR 3 (provas):** `frontend/Dockerfile` com `nginx-unprivileged:1.21-alpine` (9 CRITICAL, constrói e sobe) → `imagem-front` falha no Trivy; `USER edurag` comentado no `Dockerfile` → `imagem-api` falha na checagem de não-root. Cada prova num PR descartável, fechado sem merge.
+
+*Pronto quando:* as imagens só existem se passaram no scan (a publicação fica para a etapa 8, que reaproveita este build e o cache).
 *Para estudar:* camadas de imagem, por que imagem base slim reduz vulnerabilidades.
 
 ---

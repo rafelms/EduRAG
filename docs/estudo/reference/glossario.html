@@ -52,14 +52,26 @@
   <dt>Fingerprint</dt>
   <dd>A identificação única de um achado do gitleaks (<code>commit:arquivo:regra:linha</code>). É o que vai no <code>.gitleaksignore</code>. <span class="seen">Aula <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
 
+  <dt>Imagem base</dt>
+  <dd>A imagem do primeiro estágio de um <code>FROM</code> (por exemplo <code>python:3.12-slim</code>). Traz o sistema operacional, e é dele que vêm os pacotes que o <code>trivy image</code> escaneia. <span class="seen">Aula <a href="../lessons/0006-build-e-scan-de-imagens.html">0006</a></span></dd>
+
   <dt>Menor privilégio</dt>
   <dd>Dar a cada peça só as permissões de que ela precisa. Num workflow, é o bloco <code>permissions</code>. <span class="seen">Aula <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
+
+  <dt>Multi-stage build</dt>
+  <dd>Dockerfile com vários <code>FROM</code>: só o último vira a imagem entregue. Os estágios anteriores (Node, <code>uv</code>) só passam arquivos adiante por <code>COPY --from</code>. <span class="seen">Aula <a href="../lessons/0006-build-e-scan-de-imagens.html">0006</a></span></dd>
 
   <dt>Modo estrito</dt>
   <dd>A regra "Require branches to be up to date": a branch do PR precisa estar atualizada com a <code>main</code> antes do merge. <span class="seen">Aula <a href="../lessons/0001-protegendo-a-main.html">0001</a></span></dd>
 
+  <dt>Não-root</dt>
+  <dd>Um contêiner cujo processo roda com um usuário comum (uid diferente de 0). A checagem confiável é executar <code>id -u</code> dentro da imagem: <code>0</code> é root. <span class="seen">Aula <a href="../lessons/0006-build-e-scan-de-imagens.html">0006</a></span></dd>
+
   <dt>Portão (gate)</dt>
   <dd>Uma verificação que <em>bloqueia</em>, e não só avisa. Uma ferramenta vira portão quando o job dela entra nos checks obrigatórios. <span class="seen">Aulas <a href="../lessons/0001-protegendo-a-main.html">0001</a>, <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
+
+  <dt>Scope (do cache do Buildx)</dt>
+  <dd>O nome do cache de camadas no <code>type=gha</code>. Builds que dividem o mesmo scope sobrescrevem o cache um do outro; use um por imagem. <span class="seen">Aula <a href="../lessons/0006-build-e-scan-de-imagens.html">0006</a></span></dd>
 
   <dt>Revogar</dt>
   <dd>Invalidar uma chave no serviço que a emitiu. É o primeiro passo diante de um segredo vazado. <span class="seen">Aula <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>

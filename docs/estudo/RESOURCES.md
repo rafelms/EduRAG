@@ -49,6 +49,15 @@
 - [uv: Settings, `exclude-newer`](https://docs.astral.sh/uv/reference/settings/#exclude-newer)
   Corte por data ou duração relativa (`"7 days"`) e `exclude-newer-package`. Usar para: cooldown do uv.
 
+- [README da build-push-action](https://github.com/docker/build-push-action)
+  Entradas `context`, `file`, `push`, `load`, `tags`, `cache-from`, `cache-to`. `load` é atalho para `--output=type=docker`. Usar para: etapa 7.
+- [README da setup-buildx-action](https://github.com/docker/setup-buildx-action)
+  O driver padrão é o `docker-container`, que permite exportar cache. Usar para: etapa 7.
+- [Docker: GitHub Actions cache backend](https://docs.docker.com/build/cache/backends/gha/)
+  `type=gha`, `mode`, `scope` (um por imagem), cache só da branch atual, da base e da padrão, e a API v2 do cache. Usar para: cache do build.
+- [Trivy: Container Image](https://trivy.dev/latest/docs/target/container_image/)
+  `trivy image`: pacotes do SO e de linguagem, imagem local antes do registro, `--input` para `docker save`. Usar para: etapa 7.
+
 ## Sabedoria (comunidades)
 
 - [GitHub Community: discussões de Actions](https://github.com/orgs/community/discussions/categories/actions)
@@ -65,4 +74,6 @@
 - Como o Dependabot (`github-actions`) lê o `directory`, e se ele atualiza o comentário `# vX.Y.Z` de um SHA: a referência que li foi truncada nesse ponto. A frase sobre o comentário vem do guia de uso seguro, não da referência do Dependabot.
 - A partir de qual versão o uv entende `exclude-newer = "7 days"`: a documentação não diz. Observado: o uv 0.5 falha; o 0.9 e o 0.13.1 leem o arquivo.
 - Se `v0.76.1` do Trivy é segura: não achei aviso contra, mas a Aqua só nomeia como seguras a `0.69.2` e a `0.69.3` (para o incidente de março). Observado: a imagem oficial `0.76.1` rodou limpa.
+- O nome exato do check obrigatório de um job com *matrix* (a aula 0006 manda ele conferir na lista do ruleset, não testei). A documentação do Docker que li também não define `mode=min` e `mode=max` do cache `gha`.
+- Se o limite de 10 GB do cache do GitHub afeta o EduRAG: a página do Docker que li não menciona o limite.
 - [GitHub Status](https://www.githubstatus.com): primeiro lugar a olhar quando os checks ficam presos em *Queued* sem log (foi um incidente do Actions no PR #6).

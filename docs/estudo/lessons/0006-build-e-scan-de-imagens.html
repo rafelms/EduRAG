@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Build e scan de imagens</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Aula 0006 · Etapa 7 do <a href="../../pipeline-plano.md">pipeline-plano</a> · ~60 min</p>
+  <h1>Build e scan de imagens</h1>
+  <p class="subtitle">O último portão do Bloco B: a imagem só passa se construir, estiver limpa de CRITICAL e não rodar como root.</p>
+</header>
+
+<div class="note">
+  <p><strong>Pré-requisito:</strong> termine a etapa 6 antes (<a href="0005-cadeia-de-suprimentos.html">aula 0005</a>). Dois motivos concretos: o <code>Dockerfile</code> do <code>api</code> precisa do uv novo para ler o cooldown, e o job novo desta aula vai ser o primeiro a <em>construir</em> o <code>Dockerfile</code> na CI. Se o uv ainda for o <code>0.5</code>, é aqui que o erro apareceria.</p>
+</div>
+
+<p>Até agora a pipeline verificou <em>texto</em>: segredos, código, lockfiles. A etapa 7 verifica o <strong>artefato</strong> que vai para a AWS: a imagem. É nela que mora o que o <code>uv.lock</code> não mostra: o sistema operacional da imagem base (Debian, Alpine), o nginx e o usuário que executa o processo.</p>
+
+<h2>O mapa da etapa 7</h2>
+
+<p>Mesmo desenho da etapa 6: PRs pequenos, o segundo repete a estrutura do primeiro com menos ajuda.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>PR</th><th>Branch</th><th>O que entra</th></tr>
+  <tr><td>1</td><td><code>ci/imagem-api</code></td><td>Workflow <code>build.yml</code> com o job <code>imagem-api</code>: build com cache, <code>trivy image</code> e checagem de não-root</td></tr>
+  <tr><td>2</td><td><code>ci/imagem-front</code></td><td>Job <code>imagem-front</code> (você escreve com menos roteiro) + os dois como checks obrigatórios</td></tr>
+  <tr><td>3</td><td><code>teste/imagem-vulneravel</code> e <code>teste/imagem-root</code></td><td>As duas provas, cada uma num PR descartável</td></tr>
+</table>
+</div>
+
+<h2>Aquecimento: escreva de memória</h2>
+
+<p>Na aula 0004 você escreveu o job <code>trivy-fs</code>. Feche o <code>security.yml</code> e escreva num arquivo à parte o <strong>esqueleto</strong> dele (id, <code>runs-on</code>, <code>permissions</code>, e os steps com <code>uses</code> e <code>with</code>). Depois compare. É o mesmo exercício do ponto fraco registrado nas últimas três etapas: a estrutura YAML.</p>
+
+<h2>O que o Trivy vê dentro de uma imagem</h2>
+
+<p>O <code>trivy image</code> faz duas varreduras: os <strong>pacotes do sistema operacional</strong> (casados pela distribuição, como Debian ou Alpine) e os <strong>pacotes de linguagem</strong> (como os do Python). Por padrão ele procura a imagem no Docker local, antes de tentar um registro.<span class="source"> (<a href="https://trivy.dev/latest/docs/target/container_image/">Trivy: Container Image</a>)</span></p>
+
+<p>Medi as duas imagens do projeto em 23/10/2026, com o Trivy 0.76.1:</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th></th><th><code>api</code></th><th><code>front</code></th></tr>
+  <tr><td>Base</td><td><code>python:3.12-slim</code> (Debian 13.7)</td><td><code>nginx-unprivileged:1.29-alpine</code> (Alpine 3.23.4)</td></tr>
+  <tr><td>Tamanho</td><td>311 MB</td><td>83 MB</td></tr>
+  <tr><td>CRITICAL</td><td><strong>0</strong></td><td><strong>0</strong></td></tr>
+  <tr><td>HIGH</td><td>44, <em>todos sem correção</em></td><td>44, <em>todos com correção</em></td></tr>
+  <tr><td>Usuário que executa</td><td><code>edurag</code> (uid 10001)</td><td><code>nginx</code> (uid 101)</td></tr>
+</table>
+</div>
+
+<p>Duas leituras valem a pena. Primeiro, <strong>o portão de CRITICAL passa hoje nas duas</strong>, como o plano espera. Segundo, a linha dos HIGH: no <code>api</code>, ninguém tem o que atualizar (o Debian ainda não publicou correção); no <code>front</code>, a correção <em>existe</em> e a imagem base é que está desatualizada. Se você usasse <code>HIGH</code> como portão, o <code>front</code> ficaria vermelho por um problema que se resolve com uma tag de base mais nova. Quem traz essa tag é o Dependabot do ecossistema <code>docker</code>, da aula 0005.</p>
+
+<p><strong>Aposte antes de seguir:</strong> o <code>front</code> final só tem o nginx e os arquivos estáticos. O Node, o <code>npm</code> e o <code>node_modules</code> do estágio de build aparecem no scan? Dica: olhe os dois <code>FROM</code> do <code>frontend/Dockerfile</code>.</p>
+
+<details>
+  <summary>Resposta</summary>
+  <p>Não aparecem. O Dockerfile é <em>multi-stage</em>: o estágio <code>builder</code> (<code>node:24-alpine</code>) gera o <code>dist/</code>, e só essa pasta é copiada (<code>COPY --from=builder</code>) para o estágio final. A imagem entregue é a do último <code>FROM</code>. O mesmo vale para o <code>api</code>: o <code>uv</code> fica no estágio de build e a imagem final nem o tem (está no comentário do seu Dockerfile).</p>
+</details>
+
+<h2>Parte 1: rode local primeiro</h2>
+
+<p>Regra do Bloco B: relatório antes de portão. Construa e escaneie à mão, na raiz do projeto:</p>
+
+<pre><code>docker build -t edurag-api:teste .
+docker build -t edurag-front:teste frontend
+
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock:Z \
+  ghcr.io/aquasecurity/trivy:0.76.1 image --scanners vuln \
+  --severity CRITICAL --ignore-unfixed edurag-api:teste
+
+docker run --rm --entrypoint id edurag-api:teste -u
+docker run --rm --entrypoint id edurag-front:teste -u</code></pre>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Pedaço</th><th>Para quê</th></tr>
+  <tr><td><code>-v /var/run/docker.sock</code></td><td>Deixa o contêiner do Trivy enxergar as imagens do seu Docker local. O <code>:Z</code> é do SELinux.</td></tr>
+  <tr><td><code>image</code></td><td>O modo imagem (antes você usou <code>fs</code>).</td></tr>
+  <tr><td><code>--entrypoint id … -u</code></td><td>Em vez de iniciar a aplicação, executa <code>id -u</code> dentro da imagem e imprime o uid de quem executa. <code>0</code> é root.</td></tr>
+</table>
+</div>
+
+<p>Anote os números e compare com a tabela acima. Se o seu <code>api</code> mostrar um CRITICAL que o meu não mostrou, o banco de avisos mudou desde que medi: é o SCA de novo, agora numa imagem.</p>
+
+<h2>Parte 2: PR 1, o job imagem-api</h2>
+
+<p>Arquivo novo: <code>.github/workflows/build.yml</code>, com <code>name: Build</code> e os mesmos gatilhos dos outros workflows. O id do job é <code>imagem-api</code>. Nas etapas anteriores o ponto fraco foi a estrutura, então desta vez vai um <strong>esqueleto</strong>: as chaves, sem os valores. Você preenche.</p>
+
+<pre><code>name: Build
+
+on:
+  # os mesmos gatilhos do security.yml
+
+jobs:
+  imagem-api:
+    runs-on: …
+    permissions:
+      …
+    steps:
+      - uses: …            # checkout
+      - uses: …            # setup-buildx
+      - name: …
+        uses: …            # build-push-action
+        with:
+          …
+      - name: …
+        uses: …            # trivy-action
+        with:
+          …
+      - name: …
+        run: …             # checagem de não-root</code></pre>
+
+<ol class="checklist" data-key="0006-api">
+  <li><strong>Gatilhos e permissões.</strong> Os mesmos de <code>push</code>/<code>pull_request</code> na <code>main</code>. As <code>permissions</code> mínimas: este job lê o código e mais nada.</li>
+  <li><strong>Fixe cada action por SHA desde já</strong> (aula 0005; o commit da linha <code>^{}</code> se for tag anotada). Você precisa de três: <code>actions/checkout</code>, <code>docker/setup-buildx-action</code> e <code>docker/build-push-action</code>. Os exemplos das documentações usam <code>v4</code> para o buildx e <code>v7</code> para o build-push, mas confirme as versões no <code>ls-remote</code>.</li>
+  <li><strong>Buildx.</strong> O <code>setup-buildx-action</code> usa por padrão o driver <code>docker-container</code>, que é o que permite exportar cache.<span class="source"> (<a href="https://github.com/docker/setup-buildx-action">setup-buildx-action</a>)</span></li>
+  <li><strong>Build.</strong> Entradas da <code>build-push-action</code>: <code>context: .</code>, <code>push: false</code> e <code>load: true</code>, além de uma <code>tags</code> (ex.: <code>edurag-api:ci</code>). O <code>load</code> é atalho para <code>--output=type=docker</code>: carrega a imagem no Docker do runner, onde o Trivy a procura. O <code>push</code> manda a um registro.<span class="source"> (<a href="https://github.com/docker/build-push-action">build-push-action</a>)</span> Sem o <code>load</code>, a imagem some no fim do build e não há o que escanear.</li>
+  <li><strong>Cache.</strong> <code>cache-from: type=gha,scope=api</code> e <code>cache-to: type=gha,mode=max,scope=api</code>. Cada imagem precisa do seu <code>scope</code>: builds que dividem o mesmo escopo <em>sobrescrevem</em> o cache um do outro.<span class="source"> (<a href="https://docs.docker.com/build/cache/backends/gha/">Docker: GitHub Actions cache</a>)</span> O cache só é lido da branch atual, da base e da padrão, então o primeiro PR de uma branch nova constrói tudo do zero.</li>
+  <li><strong>Trivy.</strong> A <code>trivy-action</code> (a mesma SHA do <code>security.yml</code>) com <code>scan-type: image</code> e <code>image-ref</code> igual à tag do build. Reaproveite as entradas da aula 0004 (<code>scanners: vuln</code>, <code>exit-code: '1'</code>, <code>ignore-unfixed</code>, <code>version</code>) e troque o <code>severity</code> pelo que o plano pede.</li>
+  <li><strong>Não-root.</strong> Um step <code>run</code> que executa <code>id -u</code> na imagem e <strong>falha se o resultado for <code>0</code></strong>. Pense em como um <code>test</code> do shell compara texto, e lembre da Parte 1: o comando que imprime o uid.</li>
+  <li><strong>Antes do push:</strong> me mostre o arquivo. Abra o PR e espere o job verde. Observe o tempo; depois, rode o PR de novo (<em>Re-run</em>) e compare: o segundo build deve usar o cache.</li>
+</ol>
+
+<div class="note">
+  <p><strong>Duas coisas que o job não faz, de propósito:</strong> não publica a imagem (<code>push: false</code>; o GHCR é a etapa 8) e não envia SARIF. O objetivo desta etapa é o <em>portão</em>. A etapa 8 vai reaproveitar o cache e só publicar o que passou por aqui, que é o "pronto quando" do plano: as imagens só existem se passaram no scan.</p>
+</div>
+
+<h2>Parte 3: PR 2, o job imagem-front</h2>
+
+<p>Mesma estrutura, agora <strong>sem esqueleto</strong>: copie o job do <code>api</code> e decida o que muda. Pistas: o Dockerfile do front não está na raiz; o <code>scope</code> do cache; a tag; e o nome do job. Depois do verde, acrescente <code>imagem-api</code> e <code>imagem-front</code> aos checks obrigatórios do <code>protege-main</code> (os nomes só aparecem na busca depois de terem rodado).</p>
+
+<p><strong>Desafio opcional:</strong> os dois jobs ficaram quase iguais. O GitHub Actions tem <em>matrix</em> para isso. Antes de refatorar, pense no custo: o nome do check obrigatório muda (ele passa a incluir o valor da matriz), então o ruleset também. Se refatorar, confira o nome exato na lista do ruleset, que eu não testei.</p>
+
+<h2>Prove os dois portões</h2>
+
+<p>São dois bloqueios diferentes, então são duas provas, cada uma numa branch a partir da <code>main</code> atualizada. Não mescle nenhuma.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Prova</th><th>O que fazer</th><th>Quem deve ficar vermelho</th></tr>
+  <tr><td>Imagem vulnerável</td><td>Em <code>frontend/Dockerfile</code>, troque a base final de <code>nginx-unprivileged:1.29-alpine</code> para <code>nginx-unprivileged:1.21-alpine</code></td><td><code>imagem-front</code>, no step do Trivy (Alpine 3.15.4, fim de suporte; 9 CRITICAL, todos com correção)</td></tr>
+  <tr><td>Imagem root</td><td>Em <code>Dockerfile</code>, comente a linha <code>USER edurag</code></td><td><code>imagem-api</code>, no step do não-root (o <code>id -u</code> devolve <code>0</code>)</td></tr>
+</table>
+</div>
+
+<p>Testei as duas antes: o <code>front</code> com a base 1.21 <strong>constrói e sobe como uid 101</strong>, e o scan acha os 9 CRITICAL; e uma imagem sem <code>USER</code> devolve <code>0</code> no <code>id -u</code>. Ou seja, cada job cai <em>pelo motivo certo</em>. Confirme isso no log antes do print: vermelho pelo motivo errado não vale (o PR #14 da aula 0004 mostrou isso).</p>
+
+<div class="note">
+  <p><strong>Por que a prova do <code>api</code> não troca a base para <code>python:3.9</code>:</strong> eu testei essa base e ela tem CRITICAL, mas o projeto exige Python 3.12 (<code>requires-python</code>), então o <code>uv sync</code> do build quebraria <em>antes</em> do scan. O job ficaria vermelho, só que no step do build, e não no que você quer provar.</p>
+</div>
+
+<p>Tire o print de cada PR (job vermelho, <code>Required</code>, merge bloqueado), feche sem mesclar e volte à <code>main</code> (<code>git switch main &amp;&amp; git pull</code>, e apague a branch local com <code>-D</code>).</p>
+
+<h2>Para estudar (o plano pede)</h2>
+
+<p><strong>Imagem base slim reduz vulnerabilidades?</strong> Não aceite a frase de ninguém, nem a minha: meça. Escaneie <code>python:3.12</code> e <code>python:3.12-slim</code> com o mesmo comando da Parte 1 e compare o tamanho e a contagem de HIGH e CRITICAL. <strong>Aposte antes:</strong> quantas vezes maior é a imagem completa? A diferença nas vulnerabilidades acompanha a do tamanho? Traga os números e eu confiro com você.</p>
+
+<h2>Recupere da memória</h2>
+<p>Responda sem voltar ao texto. As duas últimas retomam as aulas 0005 e 0004.</p>
+
+<div class="quiz">
+  <div class="question" data-answer="2">
+    <p class="prompt">1. Por que o build usa push: false e load: true?</p>
+    <div class="options">
+      <button>Para enviar a imagem ao GHCR só depois do scan</button>
+      <button>Para o build rodar mais rápido com menos camadas</button>
+      <button>Para a imagem existir no Docker local e ser escaneada</button>
+    </div>
+    <p class="feedback" data-ok="Isso. O load carrega a imagem no Docker do runner, onde o Trivy a procura; o push só mandaria a um registro." data-bad="Não. O load é o que deixa a imagem no Docker local do runner. Sem ele, a imagem some e não há o que escanear."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">2. O que o portão de CRITICAL deixa passar nas imagens hoje?</p>
+    <div class="options">
+      <button>Os HIGH, que no front já têm correção disponível</button>
+      <button>Os CRITICAL, que o Trivy não consegue detectar</button>
+      <button>Os pacotes Python, que o Trivy não escaneia</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Os 44 HIGH do front têm correção: é base desatualizada, assunto do Dependabot." data-bad="Não. O Trivy detecta CRITICAL e escaneia pacotes Python. O que passa são os HIGH, porque o portão só barra CRITICAL."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">3. Por que checar com id -u, e não só pelo Dockerfile?</p>
+    <div class="options">
+      <button>Porque o docker inspect não mostra o campo User</button>
+      <button>Porque o id mostra o usuário que de fato executa</button>
+      <button>Porque o id -u só funciona em imagens Alpine</button>
+    </div>
+    <p class="feedback" data-ok="Isso. Sem USER, a imagem roda como root; o id mostra o que realmente executa." data-bad="Não. O id -u roda dentro da imagem e mostra o uid real de quem executa; 0 é root, esteja ou não escrito no Dockerfile."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">4. O que evita api e front sobrescreverem o cache um do outro?</p>
+    <div class="options">
+      <button>Usar o mesmo scope nos dois, para compartilhar</button>
+      <button>Desligar o cache-to no job do front</button>
+      <button>Um scope próprio para cada imagem, no from e no to</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Builds que dividem o escopo sobrescrevem o cache um do outro." data-bad="Não. Compartilhar o scope é justamente o que faz um build apagar o cache do outro. Use um scope por imagem."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">5. Por que fixar a build-push-action por SHA já neste PR?</p>
+    <div class="options">
+      <button>Porque uma tag pode ser movida, como na trivy-action</button>
+      <button>Porque o SHA deixa o build mais rápido de rodar</button>
+      <button>Porque o GitHub só aceita SHA em actions de Docker</button>
+    </div>
+    <p class="feedback" data-ok="Isso. Fixar desde o início evita criar mais um aviso para zerar depois." data-bad="Não. O motivo é a tag poder ser movida pelo dono da action, como aconteceu em março de 2026."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">6. Por que a prova do api não troca a base para python:3.9?</p>
+    <div class="options">
+      <button>Porque o Trivy não escaneia imagens com Python 3.9</button>
+      <button>Porque o build quebraria antes do scan, pelo motivo errado</button>
+      <button>Porque o python:3.9 não tem nenhum CRITICAL nele</button>
+    </div>
+    <p class="feedback" data-ok="Certo. O projeto exige Python 3.12: o build falharia antes do Trivy, e vermelho pelo motivo errado não é prova." data-bad="Não. A base 3.9 tem CRITICAL, mas o uv sync exige Python 3.12 e o build quebra antes do scan."></p>
+  </div>
+</div>
+
+<footer class="lesson">
+  <p><strong>Fonte principal:</strong> o <a href="https://github.com/docker/build-push-action">README da build-push-action</a> (<code>load</code>, <code>push</code>, <code>cache-from</code>) e a página do <a href="https://docs.docker.com/build/cache/backends/gha/">cache <code>gha</code> do Docker</a> (escopo, limites). Para o scan, <a href="https://trivy.dev/latest/docs/target/container_image/">Trivy: Container Image</a>.</p>
+  <p><strong>Referência rápida:</strong> <a href="../reference/imagens-docker-trivy.html">Imagens, Docker e Trivy</a> · <a href="../reference/dependencias-sca.html">Dependências e SCA</a> · <a href="../reference/glossario.html">Glossário</a>.</p>
+  <p>O build quebrou, o cache não aparece, o nome do check não está na lista do ruleset ou o Trivy mostrou algo que você não sabe classificar? Pergunte ao Claude no terminal. Ele é o seu professor nesta trilha.</p>
+</footer>
+
+</main>
+<script src="../assets/checklist.js"></script>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
