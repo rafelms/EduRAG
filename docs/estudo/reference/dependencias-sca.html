@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dependências e SCA</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Referência · das aulas <a href="../lessons/0004-vulnerabilidades-com-trivy.html">0004</a> e <a href="../lessons/0005-cadeia-de-suprimentos.html">0005</a></p>
+  <h1>Dependências e SCA</h1>
+</header>
+
+<h2>Os cinco PRs da etapa 6</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>PR</th><th>Branch</th><th>Entrega</th></tr>
+  <tr><td>1</td><td><code>fix/certifi</code></td><td><code>uv lock --upgrade-package certifi</code></td></tr>
+  <tr><td>2</td><td><code>ci/dependencias</code></td><td>Jobs <code>trivy-fs</code> e <code>npm-audit</code> + checks obrigatórios</td></tr>
+  <tr><td>3</td><td><code>teste/dependencia-vulneravel</code></td><td>Prova (<code>pyyaml==5.3</code>, <code>lodash@4.17.20</code>); fechar sem mesclar</td></tr>
+  <tr><td>4</td><td><code>ci/pin-actions</code></td><td>Actions por SHA + <code>exclude-newer</code> no uv + uv novo no Dockerfile</td></tr>
+  <tr><td>5</td><td><code>ci/dependabot</code></td><td><code>.github/dependabot.yml</code></td></tr>
+</table>
+</div>
+
+<h2>Rodar local</h2>
+<pre><code># Trivy via Docker (Fedora: :Z)
+docker run --rm -v "$PWD:/src:ro,Z" ghcr.io/aquasecurity/trivy:0.76.1 \
+  fs --scanners vuln --severity HIGH,CRITICAL \
+  --skip-dirs /src/.venv --skip-dirs /src/frontend/node_modules /src
+
+# npm
+cd frontend &amp;&amp; npm audit --audit-level=high; echo $?
+
+# corrigir um pacote do lock
+uv lock --upgrade-package NOME</code></pre>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Flag / entrada</th><th>Uso</th></tr>
+  <tr><td><code>trivy fs</code></td><td>Acha os lockfiles (<code>uv.lock</code>, <code>package-lock.json</code>) sozinho</td></tr>
+  <tr><td><code>--scanners vuln</code></td><td>Só vulnerabilidades (o padrão inclui segredos)</td></tr>
+  <tr><td><code>--severity</code></td><td>Filtra o que aparece e o que vale para o código de saída</td></tr>
+  <tr><td><code>--include-dev-deps</code></td><td>Por padrão o grupo <code>dev</code> é ignorado</td></tr>
+  <tr><td><code>ignore-unfixed</code> (action)</td><td>Esconde o que ainda não tem versão corrigida</td></tr>
+  <tr><td><code>--audit-level=high</code> (npm)</td><td>Só o código de saída; não filtra o relatório</td></tr>
+  <tr><td><code>--omit=dev</code> (npm)</td><td>Audita só o que vai para produção</td></tr>
+</table>
+</div>
+
+<h2>Tag × SHA</h2>
+<pre><code>git ls-remote --tags https://github.com/DONO/REPO 'vX.Y.Z*'
+# uma linha        -> tag leve: o SHA já é o commit
+# duas linhas      -> tag anotada: use a linha terminada em ^{}
+git ls-remote --tags https://github.com/DONO/REPO | grep SHA   # descobrir a versão exata</code></pre>
+<p>No workflow: <code>uses: DONO/REPO@&lt;sha-de-40-caracteres&gt; # vX.Y.Z</code>. Para <code>github/codeql-action/upload-sarif</code>, o repositório é <code>github/codeql-action</code>.</p>
+
+<h2>Cooldown do uv</h2>
+<pre><code>[tool.uv]
+exclude-newer = "7 days"                  # aceita "24 hours", "1 week", ISO 8601 (P7D)
+exclude-newer-package = { certifi = false }   # isenta um pacote</code></pre>
+<ul>
+  <li>Exige uv recente: o <code>uv:0.5</code> do Dockerfile falha ao ler (<code>failed to parse year in date "7 days"</code>).</li>
+  <li>Pode <strong>rebaixar</strong> uma correção de segurança recém-publicada (testado com o <code>certifi</code>).</li>
+  <li>O <code>uv.lock</code> ganha <code>exclude-newer-span = "P7D"</code>.</li>
+</ul>
+
+<h2>dependabot.yml</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Campo</th><th>Valor / efeito</th></tr>
+  <tr><td><code>version</code></td><td>sempre <code>2</code></td></tr>
+  <tr><td><code>package-ecosystem</code></td><td><code>uv</code> · <code>npm</code> · <code>docker</code> · <code>github-actions</code></td></tr>
+  <tr><td><code>directory</code> / <code>directories</code></td><td>Onde está o manifesto; só <code>directories</code> aceita glob</td></tr>
+  <tr><td><code>schedule.interval</code></td><td><code>daily</code>, <code>weekly</code>, <code>monthly</code>, <code>quarterly</code>, <code>semiannually</code>, <code>yearly</code>, <code>cron</code></td></tr>
+  <tr><td><code>cooldown</code></td><td>Só atualizações de <em>versão</em>; padrão de 3 dias</td></tr>
+  <tr><td><code>groups</code></td><td>Junta atualizações num PR só</td></tr>
+  <tr><td><code>open-pull-requests-limit</code></td><td>Padrão 5 abertos; segurança tem limite próprio de 10</td></tr>
+</table>
+</div>
+<p><strong>Limite:</strong> o Dependabot não gera alertas para actions fixadas por SHA.</p>
+
+<h2>Se o portão de SCA ficar vermelho sem commit novo</h2>
+<ol>
+  <li>Atualize a biblioteca (<code>uv lock --upgrade-package</code> / <code>npm update</code>).</li>
+  <li>Sem versão corrigida: o <code>ignore-unfixed</code> já cobre.</li>
+  <li>Falso positivo: suprimir <em>aquele</em> aviso, com justificativa (<code>.trivyignore</code>).</li>
+  <li>Desligar o portão não está na lista.</li>
+</ol>
+
+<p><a href="glossario.html">Glossário</a> · <a href="sast-semgrep.html">SAST e Semgrep</a> · <a href="segredos-gitleaks.html">Segredos e gitleaks</a></p>
+
+</main>
+</body>
+</html>

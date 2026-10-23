@@ -34,6 +34,21 @@
 - [Docs do GitHub: Uploading a SARIF file](https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/uploading-a-sarif-file-to-github)
   `upload-sarif@v4`, `security-events: write` e `category`. Usar para: etapa 5 e qualquer ferramenta que gere SARIF (Trivy na etapa 7).
 
+- [Trivy: Filesystem](https://trivy.dev/latest/docs/target/filesystem/)
+  O `trivy fs`: o que varre por padrão (vulnerabilidades e segredos), como acha os lockfiles. Usar para: etapa 6.
+- [README da trivy-action](https://github.com/aquasecurity/trivy-action)
+  Entradas da action (`scan-type`, `severity`, `exit-code`, `ignore-unfixed`, `scanners`, `version`). Os nomes foram conferidos no `action.yaml` da `v0.35.0`. Usar para: escrever o job `trivy-fs`.
+- [Aqua: Trivy supply chain attack, what you need to know](https://www.aquasec.com/blog/trivy-supply-chain-attack-what-you-need-to-know)
+  O incidente de 19/03/2026: 76 de 77 tags da `trivy-action` movidas para código malicioso, o que o código roubava e a recomendação de fixar por SHA. Usar para: o porquê do SHA (aulas 0004 e 0005).
+- [npm: npm-audit](https://docs.npmjs.com/cli/v11/commands/npm-audit)
+  `--audit-level`, `--omit=dev`, códigos de saída e o que o comando envia ao registro. Usar para: job `npm-audit`.
+- [GitHub: Secure use reference](https://docs.github.com/en/actions/reference/security/secure-use)
+  Fixar actions por SHA, o que conferir (fork), e o limite: o Dependabot não alerta sobre actions fixadas por SHA. Usar para: etapa 6.
+- [GitHub: Dependabot options reference](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference)
+  Campos do `dependabot.yml`, valores de `package-ecosystem`, `cooldown`, `groups`. Usar para: PR 5 da etapa 6.
+- [uv: Settings, `exclude-newer`](https://docs.astral.sh/uv/reference/settings/#exclude-newer)
+  Corte por data ou duração relativa (`"7 days"`) e `exclude-newer-package`. Usar para: cooldown do uv.
+
 ## Sabedoria (comunidades)
 
 - [GitHub Community: discussões de Actions](https://github.com/orgs/community/discussions/categories/actions)
@@ -47,4 +62,7 @@
 - Qual versão do gitleaks a `gitleaks-action@v3.0.0` usa por padrão (não está documentada; por isso fixamos `GITLEAKS_VERSION`).
 - ~~Se o *push protection* do GitHub barra um ID de chave da AWS sozinho.~~ Observado em 19/10/2026: **não barra** (o push do PR #6 passou); só o gitleaks pegou. Ainda sem fonte oficial.
 - Se a imagem `semgrep/semgrep` (Alpine) roda actions JavaScript como o `upload-sarif` dentro de um job `container:`. Não achei fonte oficial; por isso a aula 0003 roda o Semgrep pelo `uvx` no runner normal.
+- Como o Dependabot (`github-actions`) lê o `directory`, e se ele atualiza o comentário `# vX.Y.Z` de um SHA: a referência que li foi truncada nesse ponto. A frase sobre o comentário vem do guia de uso seguro, não da referência do Dependabot.
+- A partir de qual versão o uv entende `exclude-newer = "7 days"`: a documentação não diz. Observado: o uv 0.5 falha; o 0.9 e o 0.13.1 leem o arquivo.
+- Se `v0.76.1` do Trivy é segura: não achei aviso contra, mas a Aqua só nomeia como seguras a `0.69.2` e a `0.69.3` (para o incidente de março). Observado: a imagem oficial `0.76.1` rodou limpa.
 - [GitHub Status](https://www.githubstatus.com): primeiro lugar a olhar quando os checks ficam presos em *Queued* sem log (foi um incidente do Actions no PR #6).

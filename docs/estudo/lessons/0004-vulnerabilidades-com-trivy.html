@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dependências vulneráveis com Trivy</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Aula 0004 · Etapa 6 do <a href="../../pipeline-plano.md">pipeline-plano</a>, parte 1 de 2 · ~45 min</p>
+  <h1>Dependências vulneráveis com Trivy</h1>
+  <p class="subtitle">O terceiro portão de segurança: biblioteca com falha conhecida não entra na <code>main</code>. E o mapa completo da etapa 6.</p>
+</header>
+
+<p>O gitleaks olha para <em>segredos</em>, o Semgrep olha para o <em>seu código</em>. A etapa 6 olha para o código que <em>não é seu</em>: as bibliotecas do <code>uv.lock</code> e do <code>package-lock.json</code>. Essa análise se chama <strong>SCA</strong> (<em>Software Composition Analysis</em>) e é o que o glossário chama de proteção da <a href="../reference/glossario.html">cadeia de suprimentos</a>.</p>
+
+<h2>O mapa da etapa 6</h2>
+
+<p>A etapa tem quatro itens no plano, e eu os quebrei em cinco PRs pequenos, na ordem em que um depende do outro. Esta aula cobre os PRs 1 a 3; a <a href="0005-cadeia-de-suprimentos.html">aula 0005</a> cobre o 4 e o 5.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>PR</th><th>Branch</th><th>O que entra</th><th>Aula</th></tr>
+  <tr><td>1</td><td><code>fix/certifi</code></td><td>Corrige o CRITICAL que o Trivy já acha hoje</td><td>0004</td></tr>
+  <tr><td>2</td><td><code>ci/dependencias</code></td><td>Jobs <code>trivy-fs</code> e <code>npm-audit</code> + checks obrigatórios</td><td>0004</td></tr>
+  <tr><td>3</td><td><code>teste/dependencia-vulneravel</code></td><td>A prova: versão antiga de uma biblioteca, PR barrado e fechado</td><td>0004</td></tr>
+  <tr><td>4</td><td><code>ci/pin-actions</code></td><td>Actions por SHA + cooldown do uv: zera os 11 avisos do Semgrep</td><td>0005</td></tr>
+  <tr><td>5</td><td><code>ci/dependabot</code></td><td><code>.github/dependabot.yml</code>: as atualizações passam a chegar sozinhas</td><td>0005</td></tr>
+</table>
+</div>
+
+<p><strong>Por que essa ordem?</strong> O PR 1 vem antes do 2 porque um portão que nasce vermelho é um portão que você vai querer desligar. O PR 4 vem depois do 2 porque o job novo traz mais uma action para fixar, e o PR 5 vem por último porque o Dependabot é quem mantém os SHAs do PR 4 atualizados.</p>
+
+<h2>Aquecimento: escreva de memória</h2>
+
+<p>No fim da etapa 5, o ponto fraco era a estrutura do YAML de jobs e steps. Antes de ler o resto, feche o <code>security.yml</code> e escreva num arquivo à parte o <strong>esqueleto</strong> do job <code>semgrep</code>: id, <code>runs-on</code>, <code>permissions</code> e a lista de steps (só os <code>name</code>/<code>uses</code>/<code>run</code>, sem os detalhes). Depois compare com o arquivo real. Cada diferença é um ponto a revisar, e não um erro grave.</p>
+
+<h2>SCA: o que muda em relação ao SAST</h2>
+
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>SAST (aula 0003)</th><th>SCA (esta aula)</th></tr>
+  <tr><td>Olha para</td><td>O código que você escreveu</td><td>As bibliotecas que você instalou</td></tr>
+  <tr><td>Compara com</td><td>Regras de padrões de código</td><td>Um banco de vulnerabilidades conhecidas</td></tr>
+  <tr><td>Muda sem commit novo?</td><td>Só se a regra mudar</td><td><strong>Sim</strong>: todo dia entram avisos novos</td></tr>
+  <tr><td>Correção típica</td><td>Reescrever o trecho</td><td>Atualizar a versão no lockfile</td></tr>
+</table>
+</div>
+
+<p>A última linha da terceira coluna importa: <strong>o SCA pode deixar a <code>main</code> vermelha sem que ninguém tenha mexido em nada</strong>, porque o banco de avisos cresceu. Isso aconteceu no dia em que escrevi esta aula, e você vai ver abaixo. Um portão de SCA precisa de um plano para esse caso (a nota depois da prova, mais abaixo, trata disso).</p>
+
+<p>O Trivy, no modo <code>fs</code> (sistema de arquivos), <q>procura vulnerabilidades com base em arquivos de lock como Gemfile.lock e package-lock.json</q>, e por padrão também procura segredos.<span class="source"> (<a href="https://trivy.dev/latest/docs/target/filesystem/">Trivy: Filesystem</a>)</span> O <code>npm audit</code> faz o equivalente só para npm: envia ao registro <q>o nome e a lista de versões de cada pacote da árvore</q> e recebe de volta os avisos.<span class="source"> (<a href="https://docs.npmjs.com/cli/v11/commands/npm-audit">npm-audit</a>)</span></p>
+
+<p>Repare que o Trivy <em>também</em> lê o <code>package-lock.json</code>. Ter os dois no front é redundância parcial: cada ferramenta consulta uma base diferente, e o plano pede as duas. Fica aberta a pergunta de se vale manter ambas; vamos medir isso na prova.</p>
+
+<h2>Parte 1: rode local e classifique</h2>
+
+<p>O Trivy não está instalado na sua máquina, mas o Docker está. Rode da raiz do projeto (o <code>:Z</code> é por causa do SELinux do Fedora, como nas suas notas; a primeira execução baixa ~130 MB do banco de vulnerabilidades):</p>
+
+<pre><code>docker run --rm -v "$PWD:/src:ro,Z" ghcr.io/aquasecurity/trivy:0.76.1 \
+  fs --scanners vuln --severity HIGH,CRITICAL \
+  --skip-dirs /src/.venv --skip-dirs /src/frontend/node_modules /src
+cd frontend &amp;&amp; npm audit --audit-level=high; echo "saída: $?"</code></pre>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Pedaço</th><th>Para quê</th></tr>
+  <tr><td><code>fs … /src</code></td><td>Varre o diretório montado. Acha os dois lockfiles sozinho.</td></tr>
+  <tr><td><code>--scanners vuln</code></td><td>Só vulnerabilidades. Segredos já são trabalho do gitleaks; dois donos para a mesma pergunta geram dois lugares para suprimir.</td></tr>
+  <tr><td><code>--severity HIGH,CRITICAL</code></td><td>Filtra o que aparece (e o que vale para o código de saída).</td></tr>
+  <tr><td><code>--skip-dirs</code></td><td>Evita varrer o <code>.venv</code> e o <code>node_modules</code> da sua máquina. Na CI, o checkout limpo não os tem.</td></tr>
+  <tr><td><code>--audit-level=high</code></td><td>Do <code>npm audit</code>: <q>o nível mínimo de vulnerabilidade para sair com código diferente de zero</q>. Não filtra o relatório, só o código de saída.<span class="source"> (<a href="https://docs.npmjs.com/cli/v11/commands/npm-audit">npm-audit</a>)</span></td></tr>
+</table>
+</div>
+
+<p><strong>Antes de abrir a resposta:</strong> o que apareceu? Para cada achado, anote a biblioteca, a severidade e se existe versão corrigida.</p>
+
+<details>
+  <summary>O que apareceu na minha rodada (22/10/2026)</summary>
+  <ul>
+    <li><strong>npm:</strong> <code>frontend/package-lock.json</code> com 0 vulnerabilidades; o <code>npm audit</code> também deu 0 e saiu com 0.</li>
+    <li><strong>Python:</strong> <code>uv.lock</code> com <strong>1 CRITICAL</strong>: <code>certifi 2026.7.22</code>, aviso <code>GHSA-6q48-6c7w-9gw2</code> ("certifi bundles emSign root CAs with compromised intermediate CA keys"), corrigido na <code>2026.10.19</code>. O <code>certifi</code> é a lista de autoridades certificadoras em que o <code>httpx</code> confia para HTTPS: um problema nele é um problema na API que chama o Ollama/LLM.</li>
+    <li>O Trivy diz <q>Suppressing dependencies for development and testing</q>: por padrão ele ignora o grupo <code>dev</code> (pytest, ruff). Para incluir, a flag é <code>--include-dev-deps</code>.</li>
+  </ul>
+  <p>Ou seja: se o job entrasse na CI hoje sem correção, nasceria vermelho. Daí o PR 1.</p>
+</details>
+
+<p>O identificador do aviso começa com <code>GHSA</code> (banco de avisos do GitHub); outros começam com <code>CVE</code> (o catálogo público de vulnerabilidades). Muitas falhas têm os dois.</p>
+
+<h2>Parte 2: PR 1, corrigir o certifi</h2>
+
+<p>Faça a correção <strong>numa branch</strong>, e confira o asterisco antes de commitar:</p>
+
+<pre><code>git switch main &amp;&amp; git pull
+git switch -c fix/certifi
+git branch          # o * está em fix/certifi?
+uv lock --upgrade-package certifi
+git diff --stat     # só o uv.lock mudou?
+git diff uv.lock    # só o certifi mudou de versão?</code></pre>
+
+<p>O <code>--upgrade-package certifi</code> atualiza só esse pacote dentro do que o <code>pyproject.toml</code> permite, sem mexer no resto. Testei numa cópia: o lock passou de <code>2026.7.22</code> para <code>2026.10.19</code> e o Trivy saiu com 0. Rode o Trivy de novo para conferir o seu, abra o PR e espere o <code>backend</code> verde: o <code>uv sync --locked</code> da CI confirma que o lock está consistente.</p>
+
+<h2>Parte 3: PR 2, os jobs no security.yml</h2>
+
+<p>Dois jobs novos em <code>.github/workflows/security.yml</code>, <strong>independentes</strong>: se o Trivy falhar, o <code>npm audit</code> ainda roda e você vê os dois resultados de uma vez. Como nas aulas anteriores, <strong>eu não escrevo o YAML</strong>: o roteiro está abaixo, e quando você mostrar o arquivo eu só aponto as linhas.</p>
+
+<ol class="checklist" data-key="0004-jobs">
+  <li><strong>Job <code>trivy-fs</code></strong> em <code>ubuntu-24.04</code>, com <code>permissions: contents: read</code>. Nada de <code>security-events</code>: este job não envia SARIF.</li>
+  <li><strong>Checkout.</strong> Precisa de <code>fetch-depth: 0</code>? Pense no que o <code>trivy fs</code> lê: arquivos ou commits?</li>
+  <li><strong>A action do Trivy</strong> é a <code>aquasecurity/trivy-action</code>. Leia a seção abaixo (<q>Fixe por SHA, não por tag</q>) antes de escrever o <code>uses</code>.</li>
+  <li><strong>Entradas (<code>with</code>)</strong> da action, no <em>mesmo item</em> do <code>uses</code>: <code>scan-type: fs</code>, <code>scan-ref: .</code>, <code>scanners: vuln</code>, <code>severity: HIGH,CRITICAL</code>, <code>exit-code: 1</code>, <code>ignore-unfixed: true</code> e <code>version: v0.76.1</code>. Confirme cada nome no <code>action.yaml</code> da versão que você escolheu (<a href="https://github.com/aquasecurity/trivy-action">repositório</a>).</li>
+  <li><strong>Job <code>npm-audit</code></strong>, com <code>defaults.run.working-directory: frontend</code> (você já usa isso no <code>ci.yml</code>). Sem <code>npm ci</code>: o <code>npm audit</code> lê o <code>package-lock.json</code> e consulta o registro. Eu não testei esse job no runner: se o log mostrar que falta o <code>npm</code>, acrescente o <code>setup-node</code> como no <code>ci.yml</code>.</li>
+  <li><strong>O comando:</strong> <code>npm audit --audit-level=high</code>. Pense em <code>--omit=dev</code>: auditar só o que vai para produção? A página do npm diz que tipos omitidos <q>são pulados ao gerar o relatório</q>. O que você perde e o que ganha?</li>
+  <li><strong>Antes do push:</strong> me mostre o arquivo. Abra o PR e espere os dois jobs verdes.</li>
+  <li><strong>Depois do verde:</strong> acrescente <code>trivy-fs</code> e <code>npm-audit</code> aos checks obrigatórios do <code>protege-main</code>. Lembre da regra dos nomes de job únicos entre workflows.</li>
+</ol>
+
+<h3>Fixe por SHA, não por tag</h3>
+
+<p>Em 19 de março de 2026, um atacante moveu <strong>76 das 77 tags</strong> da <code>trivy-action</code> e as 7 tags da <code>setup-trivy</code> para commits maliciosos. O código roubava credenciais da memória do runner e rodava <em>antes</em> do scan de verdade, então os workflows pareciam normais. Quem usava uma tag executou código do atacante; quem usava o SHA de um commit anterior ao ataque, não.<span class="source"> (<a href="https://www.aquasec.com/blog/trivy-supply-chain-attack-what-you-need-to-know">Aqua: Trivy supply chain attack</a>)</span> A Aqua recomenda fixar por <q>SHA de commit completo e imutável</q>, e o guia de segurança do GitHub explica que uma tag <q>pode ser movida ou apagada</q> por quem ganhar acesso ao repositório da action.<span class="source"> (<a href="https://docs.github.com/en/actions/reference/security/secure-use">GitHub: Secure use</a>)</span></p>
+
+<p>Isso é uma ironia que vale guardar: <strong>o scanner de segurança foi o vetor do ataque</strong>. Nenhuma ferramenta está acima da regra.</p>
+
+<p>Como descobrir o SHA de uma tag, sem confiar em ninguém:</p>
+
+<pre><code>git ls-remote --tags https://github.com/aquasecurity/trivy-action 'v0.36.0*'</code></pre>
+
+<p>Vão aparecer <strong>duas linhas</strong> para a mesma tag: uma sem sufixo e outra terminando em <code>^{}</code>. A tag <code>v0.36.0</code> é <em>anotada</em>: a primeira linha é o SHA do <em>objeto da tag</em>, e a com <code>^{}</code> é o SHA do <em>commit</em> para onde ela aponta. O que o <code>uses:</code> precisa é do <strong>commit</strong>. As tags <em>leves</em> (como a <code>v0.35.0</code>) têm só uma linha, e ela já é o commit.</p>
+
+<div class="note">
+  <p><strong>Qual versão?</strong> A <code>v0.36.0</code> foi publicada em 22/04/2026, depois do incidente, como release imutável. A Aqua cita a <code>v0.35.0</code> (20/03/2026) como a versão sem problema. Qualquer uma serve; a aula usa a <code>v0.36.0</code> porque ela mostra a tag anotada. Escreva o SHA e, na mesma linha, um comentário com a versão: <code>uses: …@&lt;sha&gt; # v0.36.0</code>. O comentário é para você e para o Dependabot (aula 0005).</p>
+</div>
+
+<details>
+  <summary>Para conferir o seu SHA (abra depois de achar)</summary>
+  <p>O commit da <code>v0.36.0</code> começa com <code>ed142fd</code>. Se o seu começa com <code>a9c7b0f</code>, você pegou o objeto da tag, não o commit.</p>
+</details>
+
+<div class="note">
+  <p><strong>Duas decisões que ficam registradas:</strong> <code>ignore-unfixed: true</code> faz o portão ignorar falhas que ainda não têm versão corrigida, porque você não tem como agir sobre elas; o custo é que elas deixam de aparecer. E <code>version: v0.76.1</code> fixa o binário do Trivy, que é outro elo da cadeia: o padrão da action na <code>v0.36.0</code> é a <code>v0.70.0</code>, e eu testei a <code>0.76.1</code>.</p>
+</div>
+
+<h2>Prove o portão</h2>
+
+<p>O plano diz: <em>"PR adicionando uma versão antiga e vulnerável de alguma biblioteca → pipeline falha."</em> Com os dois jobs obrigatórios e o PR 2 mesclado, faça duas provas, uma por job. Cada uma numa branch própria, a partir da <code>main</code> atualizada. <strong>Não mescle nenhuma.</strong></p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Prova</th><th>O que fazer</th><th>Quem deve ficar vermelho</th></tr>
+  <tr><td>Python</td><td>Em <code>pyproject.toml</code>, acrescente <code>"pyyaml==5.3"</code> às dependências e rode <code>uv lock</code></td><td><code>trivy-fs</code> (2 CRITICAL: <code>CVE-2020-14343</code> e <code>CVE-2020-1747</code>)</td></tr>
+  <tr><td>npm</td><td>Em <code>frontend/</code>: <code>npm install lodash@4.17.20</code></td><td><code>npm-audit</code> (1 HIGH, "Command Injection in lodash") e, talvez, o <code>trivy-fs</code></td></tr>
+</table>
+</div>
+
+<p>Testei os dois cenários numa cópia, fora do repositório: o <code>pyyaml==5.3</code> faz o Trivy sair com 1; o <code>lodash@4.17.20</code> faz o <code>npm audit</code> sair com 1. Antes de olhar o PR da prova do npm, <strong>aposte</strong>: o <code>trivy-fs</code> também vai ficar vermelho? Depois confira e anote o resultado, porque ele responde se vale manter as duas ferramentas no front.</p>
+
+<p>Tire o print de cada PR (job vermelho, merge bloqueado), feche sem mesclar e apague as branches. Esses prints são a evidência do currículo.</p>
+
+<div class="note">
+  <p><strong>E se o portão ficar vermelho na <code>main</code> sem ninguém ter mexido?</strong> É o caso do certifi. A resposta madura tem três partes: (1) atualizar a biblioteca, que é o normal; (2) se não houver versão corrigida, o <code>ignore-unfixed</code> já cobre; (3) se for um falso positivo, ignorar <em>aquele</em> aviso com justificativa (no Trivy, um arquivo <code>.trivyignore</code> com o id). Desligar o portão não está na lista.</p>
+</div>
+
+<h2>Recupere da memória</h2>
+<p>Responda sem voltar ao texto. A última pergunta retoma a aula 0003.</p>
+
+<div class="quiz">
+  <div class="question" data-answer="1">
+    <p class="prompt">1. O que o SCA analisa?</p>
+    <div class="options">
+      <button>O código que você escreveu, atrás de padrões perigosos</button>
+      <button>As bibliotecas que você usa, atrás de versões vulneráveis</button>
+      <button>A aplicação em execução, atrás de rotas desprotegidas</button>
+    </div>
+    <p class="feedback" data-ok="Isso. SCA compara as versões dos seus lockfiles com um banco de vulnerabilidades conhecidas." data-bad="Não. O primeiro é SAST e o terceiro é DAST. SCA olha as bibliotecas do lockfile."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">2. Por que o Trivy pode ficar vermelho sem nenhum commit novo?</p>
+    <div class="options">
+      <button>Porque ele reescreve o lockfile a cada execução</button>
+      <button>Porque o runner troca de versão do Python sozinho</button>
+      <button>Porque entram avisos novos no banco de vulnerabilidades</button>
+    </div>
+    <p class="feedback" data-ok="Certo. O código não mudou, mas o conhecimento sobre as falhas mudou. Foi o caso do certifi." data-bad="Não. O lockfile é só lido. O que muda é o banco de avisos, que ganha vulnerabilidades novas todo dia."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">3. O git ls-remote mostra duas linhas para uma tag anotada. Qual SHA vai no uses?</p>
+    <div class="options">
+      <button>O da linha com ^{}, que aponta para o commit</button>
+      <button>O da primeira linha, que é o objeto da tag</button>
+      <button>Tanto faz, porque os dois SHAs valem igual</button>
+    </div>
+    <p class="feedback" data-ok="Isso. O uses precisa do commit. O objeto da tag é só o rótulo anotado." data-bad="Não. A linha com ^{} é o commit. O SHA do objeto da tag não serve como referência de código."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">4. Por que o job npm-audit dispensa o npm ci?</p>
+    <div class="options">
+      <button>Porque ele instala os pacotes sozinho antes de auditar</button>
+      <button>Porque ele lê o lockfile e consulta o registro de avisos</button>
+      <button>Porque o runner guarda o node_modules pronto em cache</button>
+    </div>
+    <p class="feedback" data-ok="Certo. O npm audit manda ao registro os nomes e versões do lockfile; não precisa dos arquivos instalados." data-bad="Não. O npm audit só precisa do package-lock.json: ele envia nomes e versões ao registro e recebe os avisos."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">5. Qual é o custo de usar ignore-unfixed: true no Trivy?</p>
+    <div class="options">
+      <button>O scan fica bem mais lento e baixa avisos demais</button>
+      <button>Falhas que já têm correção deixam de bloquear o PR</button>
+      <button>Falhas sem correção disponível deixam de bloquear o PR</button>
+    </div>
+    <p class="feedback" data-ok="Isso. Você não tem como agir sobre elas, mas também deixa de vê-las no portão." data-bad="Não. A flag só esconde o que ainda não tem versão corrigida. O que tem correção continua bloqueando."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">6. Num job com duas actions, quantos blocos permissions ele tem?</p>
+    <div class="options">
+      <button>Um só, no nível do job, valendo para todos os steps</button>
+      <button>Um por step, dentro de cada item da lista de steps</button>
+      <button>Dois, um para cada action que o job usa</button>
+    </div>
+    <p class="feedback" data-ok="Certo. permissions fica no nível do job (ou do workflow), junto do runs-on e da lista de steps." data-bad="Não. permissions pertence ao job, não ao step. Um job tem um bloco de permissions e uma lista de steps."></p>
+  </div>
+</div>
+
+<footer class="lesson">
+  <p><strong>Fonte principal:</strong> o <a href="https://www.aquasec.com/blog/trivy-supply-chain-attack-what-you-need-to-know">post da Aqua sobre o ataque à cadeia de suprimentos do Trivy</a> (o porquê do SHA) e o <a href="https://github.com/aquasecurity/trivy-action">README da trivy-action</a> (o como). Para o <code>npm audit</code>, a <a href="https://docs.npmjs.com/cli/v11/commands/npm-audit">página do npm</a>.</p>
+  <p><strong>Referência rápida:</strong> <a href="../reference/dependencias-sca.html">Dependências e SCA</a> · <a href="../reference/sast-semgrep.html">SAST e Semgrep</a> · <a href="../reference/glossario.html">Glossário</a>.</p>
+  <p>O Trivy mostrou um aviso que você não entende, o SHA não bate com o esperado ou o check não aparece na lista do ruleset? Pergunte ao Claude no terminal. Ele é o seu professor nesta trilha.</p>
+</footer>
+
+</main>
+<script src="../assets/checklist.js"></script>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

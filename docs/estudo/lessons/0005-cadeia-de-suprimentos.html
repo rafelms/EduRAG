@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cadeia de suprimentos: SHA, cooldown e Dependabot</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Aula 0005 · Etapa 6 do <a href="../../pipeline-plano.md">pipeline-plano</a>, parte 2 de 2 · ~50 min</p>
+  <h1>Cadeia de suprimentos: SHA, cooldown e Dependabot</h1>
+  <p class="subtitle">Zerar os 11 avisos que o Semgrep deixou na etapa 5 e fazer as atualizações chegarem sozinhas, sem abrir mão da segurança.</p>
+</header>
+
+<p>Na <a href="0004-vulnerabilidades-com-trivy.html">aula 0004</a>, o Trivy passou a barrar bibliotecas com falha <em>conhecida</em>. Esta aula cobre o outro lado: o risco de uma biblioteca ou action <em>boa hoje</em> virar maliciosa amanhã, como a <code>trivy-action</code> virou em março. São três defesas, uma para cada elo, e elas se puxam umas às outras:</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Elo</th><th>Defesa</th><th>O efeito colateral que ela cria</th></tr>
+  <tr><td>Actions</td><td>Fixar por <strong>SHA</strong></td><td>Nunca mais recebe versão nova sozinho</td></tr>
+  <tr><td>Pacotes Python</td><td><strong>Cooldown</strong> no uv</td><td>Pode atrasar até uma correção de segurança</td></tr>
+  <tr><td>Os dois acima</td><td><strong>Dependabot</strong></td><td>Cobre o efeito colateral das duas defesas</td></tr>
+</table>
+</div>
+
+<p>Esta aula é sobre essa tensão. Os PRs são o 4 (<code>ci/pin-actions</code>) e o 5 (<code>ci/dependabot</code>) do <a href="0004-vulnerabilidades-com-trivy.html">mapa da aula 0004</a>.</p>
+
+<h2>Aquecimento: retomada da aula anterior</h2>
+
+<p>Sem olhar a aula 0004: o <code>git ls-remote</code> devolveu duas linhas para a mesma tag. Qual você usa no <code>uses:</code>, e como saber, só pelo formato da linha? Se não lembrar, volte à seção <q>Fixe por SHA, não por tag</q> e anote a resposta; ela é a parte mais fácil de errar no PR 4.</p>
+
+<h2>Parte 1: PR 4, fixar as actions por SHA</h2>
+
+<p>O guia de segurança do GitHub recomenda fixar actions de terceiros num SHA de commit completo, e diz o que conferir: o SHA deve vir <strong>do repositório da própria action, não de um fork</strong>, e mesmo assim vale auditar o código.<span class="source"> (<a href="https://docs.github.com/en/actions/reference/security/secure-use">GitHub: Secure use</a>)</span> A lista de tarefas é o seu relatório do Semgrep. Rode-o e anote os arquivos e as linhas:</p>
+
+<pre><code>uvx semgrep@1.180.0 scan --config p/default --metrics off --quiet</code></pre>
+
+<p>Na minha rodada de 22/10/2026 eram <strong>10 usos de action por tag</strong> (regra <code>github-actions-mutable-action-tag</code>) mais <strong>1 do uv</strong> (parte 2). Os 10 usos são 6 actions diferentes. Depois dos jobs da aula 0004, o seu número será maior: cada <code>checkout</code> novo conta.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Action</th><th>Repositório para o <code>ls-remote</code></th><th>Onde aparece</th></tr>
+  <tr><td><code>actions/checkout</code></td><td><code>actions/checkout</code></td><td><code>ci.yml</code> e <code>security.yml</code></td></tr>
+  <tr><td><code>astral-sh/setup-uv</code></td><td><code>astral-sh/setup-uv</code></td><td>ambos</td></tr>
+  <tr><td><code>actions/setup-node</code></td><td><code>actions/setup-node</code></td><td><code>ci.yml</code></td></tr>
+  <tr><td><code>actions/upload-artifact</code></td><td><code>actions/upload-artifact</code></td><td><code>ci.yml</code></td></tr>
+  <tr><td><code>gitleaks/gitleaks-action</code></td><td><code>gitleaks/gitleaks-action</code></td><td><code>security.yml</code></td></tr>
+  <tr><td><code>github/codeql-action/upload-sarif</code></td><td><code>github/codeql-action</code> (o repositório é só a primeira parte do caminho)</td><td><code>security.yml</code></td></tr>
+</table>
+</div>
+
+<ol class="checklist" data-key="0005-sha">
+  <li><strong>Branch nova</strong> a partir da <code>main</code> atualizada. Confira o <code>*</code> do <code>git branch</code> antes de editar.</li>
+  <li><strong>Para cada action</strong>: rode o <code>git ls-remote --tags</code> no repositório dela, filtrando pela tag que você usa hoje. Escolha a linha certa (aula 0004).</li>
+  <li><strong>As tags de versão maior</strong> (como <code>v7</code>) <em>se movem</em> a cada versão menor. Descubra qual versão exata aquele commit é: <code>git ls-remote --tags &lt;repo&gt; | grep &lt;sha&gt;</code> mostra os nomes de tag que apontam para ele. Escreva a versão exata no comentário: <code># v7.x.y</code>.</li>
+  <li><strong>Troque o <code>uses</code></strong> para <code>repo@&lt;sha-completo-de-40-caracteres&gt; # vX.Y.Z</code>. Um SHA abreviado não funciona.</li>
+  <li><strong>Não esqueça</strong> do <code>upload-sarif</code> (o caminho tem <code>/upload-sarif</code> depois do repositório) e das actions dos jobs novos da aula 0004.</li>
+  <li><strong>Rode o Semgrep de novo:</strong> os avisos de action devem sumir. Se um sobrou, o relatório diz a linha.</li>
+  <li><strong>Abra o PR.</strong> Todos os checks verdes provam que cada SHA existe e baixa a action. Um SHA errado faz o job falhar ao baixar a action.</li>
+</ol>
+
+<div class="note">
+  <p><strong>Cuidado com a ordem dentro do PR:</strong> troque primeiro uma action e rode a CI. Se você trocar as 10 de uma vez e um SHA estiver errado, o erro aparece em vários jobs ao mesmo tempo e fica mais difícil achar qual foi.</p>
+</div>
+
+<h2>Parte 2: cooldown no uv</h2>
+
+<p>O aviso restante, <code>uv-missing-dependency-cooldown</code>, aponta o <code>[tool.uv]</code> do <code>pyproject.toml</code>. A defesa: o uv só aceita versões publicadas há pelo menos N dias. A ideia (é raciocínio, não citação) é que pacotes comprometidos costumam ser detectados e removidos nas primeiras horas ou dias. A opção do uv se chama <code>exclude-newer</code> e aceita, além de data fixa, uma duração: <q>24 hours</q>, <q>1 week</q> ou <q>30 days</q>.<span class="source"> (<a href="https://docs.astral.sh/uv/reference/settings/#exclude-newer">uv: Settings</a>)</span> O mesmo documento descreve o <code>exclude-newer-package</code>, que aplica um corte diferente, ou nenhum, a um pacote.</p>
+
+<p>Parece uma linha só. Mas eu testei antes, e a linha "só" tem <strong>duas armadilhas</strong> que o plano não prevê.</p>
+
+<h3>Armadilha 1: o Dockerfile</h3>
+
+<p>Com <code>exclude-newer = "7 days"</code> no <code>pyproject.toml</code>, o <code>uv lock</code> do meu uv local (0.13.1) funcionou e o Semgrep zerou o aviso. O lock ganhou 4 linhas, entre elas <code>exclude-newer-span = "P7D"</code>. Mas o seu <code>Dockerfile</code> baixa o <code>ghcr.io/astral-sh/uv:0.5</code>, e esse uv leu o mesmo arquivo e respondeu:</p>
+
+<pre><code>failed to parse year in date "7 days": failed to parse "7 da" as year</code></pre>
+
+<p>O <code>uv:0.9</code> e o <code>uv:0.13.1</code> passaram dessa leitura (parei no passo seguinte, porque a imagem pura do uv não tem o resto do sistema para o <code>sync</code>). <strong>Sua tarefa:</strong> subir a versão do uv no Dockerfile e provar com <code>docker build</code> que a imagem do <code>api</code> continua construindo. Sem isso, o PR passa na CI atual (ela ainda não constrói imagens) e quebra só na etapa 7. Esse é um bom exemplo de por que o build da imagem vira portão mais adiante.</p>
+
+<h3>Armadilha 2: o cooldown desfaz a correção de segurança</h3>
+
+<p>Depois do PR 1, o seu <code>uv.lock</code> tem o <code>certifi 2026.10.19</code>, publicado em 19/10. Com cooldown de 7 dias, essa versão ainda é "nova demais". No meu teste, ao adicionar o cooldown sobre o lock já corrigido:</p>
+
+<pre><code>Resolving despite existing lockfile due to addition of global exclude newer 2026-10-15T…
+Updated certifi v2026.10.19 -&gt; v2026.7.22</code></pre>
+
+<p>O uv <strong>rebaixou</strong> o <code>certifi</code> para a versão vulnerável, a mesma que o Trivy marcou como CRITICAL. <strong>Aposte antes de seguir:</strong> o que a CI do seu PR 4 vai mostrar nesse caso? (O <code>trivy-fs</code> da aula 0004 está de pé.)</p>
+
+<details>
+  <summary>A resposta e as saídas (abra depois de apostar)</summary>
+  <p>O <code>trivy-fs</code> fica vermelho: o portão pega o rebaixamento. É o motivo de fazer o scan primeiro e o cooldown depois. As saídas, em ordem de preferência:</p>
+  <ul>
+    <li><strong>Esperar:</strong> o <code>certifi 2026.10.19</code> passa dos 7 dias em 26/10. Depois disso, o <code>uv lock</code> mantém a versão. Custa só o tempo.</li>
+    <li><strong>Exceção:</strong> <code>exclude-newer-package = { certifi = false }</code> (testei: o <code>uv lock --upgrade-package certifi</code> volta para a <code>2026.10.19</code>). Funciona, mas é uma isenção permanente num pacote, e é a de um pacote de segurança.</li>
+    <li><strong>Reduzir o prazo</strong> (por exemplo, <code>"3 days"</code>): é um número a mais para você escolher, sem solução de fundo.</li>
+  </ul>
+  <p>Não há saída correta única: é uma decisão sua, e a conta é <em>risco de pacote malicioso novo</em> × <em>atraso em correção de segurança</em>. Escreva a sua em duas linhas num comentário do <code>pyproject.toml</code> ou no PR.</p>
+</details>
+
+<div class="note">
+  <p><strong>O Dependabot já tem essa distinção embutida:</strong> a opção <code>cooldown</code> dele <q>só está disponível para atualizações de <em>versão</em>, não de <em>segurança</em></q>.<span class="source"> (<a href="https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference">Dependabot options reference</a>)</span> Ou seja: ele espera para o que é novidade, mas não espera para o que é correção. O <code>exclude-newer</code> do uv não distingue.</p>
+</div>
+
+<h2>Parte 3: PR 5, o dependabot.yml</h2>
+
+<p>O Dependabot abre PRs de atualização, e é ele quem mantém atual tudo que você acabou de fixar. É um <strong>arquivo de configuração</strong>, não um job: vai em <code>.github/dependabot.yml</code> (não em <code>workflows/</code>). Os campos obrigatórios são <code>version</code> (sempre <code>2</code>), <code>updates</code>, e, em cada item, <code>package-ecosystem</code>, <code>directory</code> (ou <code>directories</code>) e <code>schedule.interval</code>.<span class="source"> (<a href="https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference">Dependabot options reference</a>)</span></p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>O que atualizar</th><th>Valor de <code>package-ecosystem</code></th><th>Onde está</th></tr>
+  <tr><td>Python (<code>uv.lock</code>)</td><td><code>uv</code> (a referência o lista; o <code>pip</code> é a alternativa)</td><td>raiz do repositório</td></tr>
+  <tr><td>npm</td><td><code>npm</code></td><td><code>frontend/</code></td></tr>
+  <tr><td>Docker</td><td><code>docker</code></td><td>dois Dockerfiles: na raiz e em <code>frontend/</code></td></tr>
+  <tr><td>Actions</td><td><code>github-actions</code></td><td>os workflows, em <code>.github/workflows/</code></td></tr>
+</table>
+</div>
+
+<p>São <strong>quatro ecossistemas e cinco pastas</strong> no total. Quem usa o campo <code>directory</code> (singular) escreve um item por pasta; o <code>directories</code> (plural) aceita uma lista. Confirme na referência como o <code>github-actions</code> lê o <code>directory</code>, que eu não consegui confirmar no texto que li.</p>
+
+<ol class="checklist" data-key="0005-dependabot">
+  <li><strong>Esqueleto:</strong> <code>version: 2</code> e a lista <code>updates:</code>. Cada item da lista começa com <code>-</code> e tem <code>package-ecosystem</code>, <code>directory</code> e <code>schedule</code> com <code>interval</code> (a mesma regra do YAML dos workflows: o <code>-</code> abre o item, e as chaves do item ficam alinhadas).</li>
+  <li><strong>Um item por ecossistema/pasta</strong> da tabela acima. Comece sem opções extras e vá acrescentando só o que decidir.</li>
+  <li><strong>Frequência:</strong> escolha o <code>interval</code> (<code>daily</code>, <code>weekly</code>, <code>monthly</code>…). Pense em quantos PRs por semana você aguenta revisar sozinho.</li>
+  <li><strong>Ruído:</strong> <code>open-pull-requests-limit</code> (o padrão é 5 abertos por ecossistema) e <code>groups</code> (juntar atualizações menores num PR só) existem para isso. Decida se vale usar.</li>
+  <li><strong>Cooldown:</strong> a referência diz que o Dependabot já aplica <strong>3 dias</strong> de cooldown a atualizações de versão mesmo sem configuração. Decida se muda o <code>default-days</code>.</li>
+  <li><strong>Abra o PR.</strong> O arquivo não roda como job, então a CI não o testa. Depois do merge, confira em <em>Insights → Dependency graph → Dependabot</em> se o GitHub leu o arquivo sem erro.</li>
+</ol>
+
+<p>Quando abrir o primeiro PR do Dependabot (pode levar horas ou até a próxima janela do <code>interval</code>), repare em três coisas: ele passa pelos mesmos checks obrigatórios que o seu PR; nas actions fixadas por SHA, ele <strong>troca o SHA e o comentário de versão</strong> (a documentação do GitHub diz que atualiza o comentário que estiver na mesma linha); e a descrição do PR traz as notas de versão para você ler antes de mesclar.<span class="source"> (<a href="https://docs.github.com/en/actions/reference/security/secure-use">GitHub: Secure use</a>)</span></p>
+
+<div class="note">
+  <p><strong>Um limite que fica registrado:</strong> o Dependabot <em>não cria alertas</em> para actions fixadas por SHA.<span class="source"> (<a href="https://docs.github.com/en/actions/reference/security/secure-use">GitHub: Secure use</a>)</span> Ou seja, depois do PR 4, uma action fixada com falha conhecida não avisa sozinha: você depende dos PRs de versão do Dependabot. Por isso o SHA, sozinho, não basta.</p>
+</div>
+
+<h2>Prove e feche a etapa</h2>
+
+<p>Duas coisas para guardar como evidência do currículo:</p>
+
+<ol>
+  <li><strong>O Semgrep em zero.</strong> Print da aba <em>Security → Code scanning</em> sem os avisos de cadeia de suprimentos (ou a saída do <code>semgrep scan</code> local, vazia). É a prova de que os 11 avisos viraram trabalho feito.</li>
+  <li><strong>O primeiro PR do Dependabot</strong>, com os checks rodando. Mescle um dele (de preferência o das actions), e guarde o link.</li>
+</ol>
+
+<h3>Decisão em aberto, para depois</h3>
+<p>Com o relatório zerado, o portão do Semgrep (<code>--severity ERROR</code>) pode passar a barrar também <code>WARNING</code>: assim, uma action nova por tag em um PR futuro seria barrada. O custo é qualquer aviso novo de outra regra também bloquear o merge. Pense nisso e traga uma opinião; não é obrigatório para fechar a etapa.</p>
+
+<p><strong>A etapa 6 está pronta quando</strong> o <code>trivy-fs</code> e o <code>npm-audit</code> são checks obrigatórios, o Semgrep não aponta mais cadeia de suprimentos, e o Dependabot abriu pelo menos um PR. Aí atualize o <a href="../../pipeline-plano.md">pipeline-plano</a> marcando os itens, e a etapa 7 (build e scan das imagens) começa.</p>
+
+<h2>Recupere da memória</h2>
+<p>Responda sem voltar ao texto. A última retoma a aula 0002.</p>
+
+<div class="quiz">
+  <div class="question" data-answer="2">
+    <p class="prompt">1. Por que uma action fixada por SHA precisa de um atualizador?</p>
+    <div class="options">
+      <button>Porque o SHA expira depois de alguns dias</button>
+      <button>Porque o GitHub apaga os SHAs de versões antigas</button>
+      <button>Porque um SHA fixo não recebe versão nova sozinho</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Fixar é congelar: sem o Dependabot, as correções de segurança da action nunca chegam." data-bad="Não. O SHA não expira nem é apagado: o ponto é que, fixo, ele nunca avança sozinho."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">2. De que risco o cooldown de 7 dias do uv protege?</p>
+    <div class="options">
+      <button>Pacote malicioso publicado e retirado em poucos dias</button>
+      <button>Biblioteca com bug de desempenho em produção</button>
+      <button>Conflito entre duas versões do mesmo pacote</button>
+    </div>
+    <p class="feedback" data-ok="Isso. A janela de espera deixa a comunidade detectar e remover versões comprometidas antes de você aceitá-las." data-bad="Não. O cooldown trata de versões comprometidas recém-publicadas, não de desempenho nem de conflito de versões."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">3. O que o cooldown fez com o certifi corrigido, no teste?</p>
+    <div class="options">
+      <button>Manteve a versão corrigida, porque já estava no lock</button>
+      <button>Voltou à versão vulnerável, por ser mais antiga que 7 dias</button>
+      <button>Falhou o uv lock com uma mensagem de data inválida</button>
+    </div>
+    <p class="feedback" data-ok="Certo. A versão corrigida era recente demais; o uv rebaixou, e o Trivy pegaria isso." data-bad="Não. O uv re-resolveu e rebaixou o certifi para a versão antiga e vulnerável, porque a corrigida tinha menos de 7 dias."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">4. Por que o Dockerfile precisa mudar junto com o cooldown?</p>
+    <div class="options">
+      <button>O uv 0.5 não consegue rodar dentro de contêineres</button>
+      <button>O uv 0.5 ignora o uv.lock durante o sync</button>
+      <button>O uv 0.5 não entende duração relativa como 7 days</button>
+    </div>
+    <p class="feedback" data-ok="Isso. Ele falha ao ler o pyproject.toml. A CI atual não constrói a imagem, então só a etapa 7 mostraria o erro." data-bad="Não. O problema é de leitura: o uv 0.5 não parseia &quot;7 days&quot; no pyproject.toml e o build da imagem quebra."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">5. O cooldown do Dependabot vale para atualizações de segurança?</p>
+    <div class="options">
+      <button>Não, só vale para as atualizações de versão</button>
+      <button>Sim, vale para os dois tipos de atualização</button>
+      <button>Só para as de segurança, nunca para versão</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Espera para novidade, mas não para correção. O exclude-newer do uv não faz essa distinção." data-bad="Não. A documentação diz que o cooldown é só para atualizações de versão; segurança passa direto."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">6. Por que o job trivy-fs dispensa o fetch-depth: 0?</p>
+    <div class="options">
+      <button>Porque ele varre só os commits mais recentes do PR</button>
+      <button>Porque ele lê os lockfiles do checkout, não commits</button>
+      <button>Porque o checkout padrão já traz o histórico inteiro</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Como o semgrep scan, ele lê arquivos. Só o gitleaks percorre commits." data-bad="Não. O trivy fs lê os arquivos do checkout (os lockfiles). Quem percorre o intervalo de commits é o gitleaks."></p>
+  </div>
+</div>
+
+<footer class="lesson">
+  <p><strong>Fonte principal:</strong> o <a href="https://docs.github.com/en/actions/reference/security/secure-use">guia de uso seguro do GitHub Actions</a> (SHA, o que conferir e o limite do Dependabot) e a <a href="https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference">referência de opções do Dependabot</a>. Para o cooldown, as <a href="https://docs.astral.sh/uv/reference/settings/#exclude-newer">configurações do uv</a>.</p>
+  <p><strong>Referência rápida:</strong> <a href="../reference/dependencias-sca.html">Dependências e SCA</a> · <a href="../reference/glossario.html">Glossário</a>.</p>
+  <p>O <code>docker build</code> quebrou, o Dependabot não abriu PR ou você ficou em dúvida sobre qual saída escolher na armadilha 2? Pergunte ao Claude no terminal. Ele é o seu professor nesta trilha.</p>
+</footer>
+
+</main>
+<script src="../assets/checklist.js"></script>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
