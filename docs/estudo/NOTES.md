@@ -16,4 +16,10 @@
 - 20/10/2026: etapa 5 provada (PR #10). Ver learning record 0004. Ele pediu o `security.yml` corrigido e eu escrevi; da próxima vez, oferecer primeiro só os apontamentos.
 - **Testar as provas sempre com a config do projeto** (`uv run ruff check`, que lê o `pyproject.toml`), nunca com `uvx ruff` solto: errei isso na 0003.
 - Ele faz perguntas de mercado ("e no Spring Boot?", "PR verde recusado?"). Responder com tabela curta e apontar uma comunidade (r/devops, r/brdev).
-- Próximo: aula 0004, etapa 6 (dependências: Dependabot, `trivy fs`, `npm audit`, actions por SHA, cooldown do uv). Os 11 avisos do Semgrep são a lista de tarefas dela.
+- 22/10/2026: aulas 0004 (Trivy + npm audit) e 0005 (SHA, cooldown, Dependabot) criadas, a pedido dele ("plano de estudo e implementação para entender na mão"). Plano em 5 PRs: `fix/certifi`, `ci/dependencias`, prova, `ci/pin-actions`, `ci/dependabot`. Mapa na aula 0004.
+- Testado antes (22/10): o Trivy já acha 1 CRITICAL real (`certifi 2026.7.22`, corrigir com `uv lock --upgrade-package certifi`); `npm audit` limpo. Provas: `pyyaml==5.3` derruba o Trivy, `lodash@4.17.20` derruba o `npm audit`. Semgrep: 10 usos de action por tag + 1 cooldown do uv = 11.
+- Armadilhas da 0005, ambas observadas: (1) `exclude-newer = "7 days"` quebra o `uv:0.5` do Dockerfile; (2) o cooldown rebaixa o `certifi` corrigido (publicado em 19/10) até 26/10. Ele decide entre esperar, `exclude-newer-package` ou prazo menor. Não validei `docker build` com uv novo: é tarefa dele.
+- `trivy-action`: v0.36.0 é tag anotada (usar o commit `^{}`); incidente de 19/03/2026 é o exemplo central do porquê do SHA. Não dei os SHAs: ele resolve com `git ls-remote`, e a aula traz só a dica de conferência.
+- Não dei o YAML dos jobs nem do `dependabot.yml`: só roteiro. Na revisão, **só apontar as linhas**. A 0004 abre com o aquecimento de reescrever o job `semgrep` de memória (pendência do registro 0004).
+- Não testei o job `npm-audit` no runner (assumi o npm pré-instalado; a aula manda ele conferir o log).
+- Próximo: quando ele terminar os 5 PRs, criar o learning record 0005 e começar a etapa 7 (build e scan das imagens com `trivy image`; o Dockerfile e o uv novo já terão sido tocados no PR 4). Depois de zerado o Semgrep, retomar a discussão de tirar o `--severity ERROR`.

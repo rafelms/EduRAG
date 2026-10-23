@@ -25,6 +25,9 @@
   <dt>Bypass list</dt>
   <dd>Quem pode ignorar as regras de um ruleset. No <code>protege-main</code>, fica vazia. <span class="seen">Aula <a href="../lessons/0001-protegendo-a-main.html">0001</a></span></dd>
 
+  <dt>Advisory (aviso de segurança)</dt>
+  <dd>O registro público de uma vulnerabilidade, com versões afetadas e corrigidas. Identificado por <code>GHSA-…</code> (banco do GitHub) ou <code>CVE-…</code> (catálogo público). <span class="seen">Aula <a href="../lessons/0004-vulnerabilidades-com-trivy.html">0004</a></span></dd>
+
   <dt>Check obrigatório (required status check)</dt>
   <dd>Um job da CI que precisa ficar verde para o merge ser liberado. É identificado pelo id do job no workflow. <span class="seen">Aula <a href="../lessons/0001-protegendo-a-main.html">0001</a></span></dd>
 
@@ -33,6 +36,9 @@
 
   <dt>Conjunto de regras do Semgrep</dt>
   <dd>Um pacote de regras do registro do Semgrep, como <code>p/default</code>. O Semgrep o chama de <em>ruleset</em>, mas nesta trilha <strong>ruleset</strong> é só o do GitHub. <span class="seen">Aula <a href="../lessons/0003-sast-com-semgrep.html">0003</a></span></dd>
+
+  <dt>Cooldown</dt>
+  <dd>Uma espera mínima, em dias, antes de aceitar uma versão recém-publicada. No uv é o <code>exclude-newer</code>; no Dependabot, a opção <code>cooldown</code>, que só vale para atualizações de versão. <span class="seen">Aula <a href="../lessons/0005-cadeia-de-suprimentos.html">0005</a></span></dd>
 
   <dt>DAST</dt>
   <dd><em>Dynamic Application Security Testing</em>: testa a aplicação rodando, de fora, como um atacante faria. <span class="seen">Aula <a href="../lessons/0003-sast-com-semgrep.html">0003</a></span></dd>
@@ -66,6 +72,12 @@
 
   <dt>SAST</dt>
   <dd><em>Static Application Security Testing</em>: analisa o código-fonte sem executá-lo, em busca de padrões perigosos conhecidos. <span class="seen">Aula <a href="../lessons/0003-sast-com-semgrep.html">0003</a></span></dd>
+
+  <dt>SCA</dt>
+  <dd><em>Software Composition Analysis</em>: compara as bibliotecas dos seus lockfiles com um banco de vulnerabilidades conhecidas. O resultado muda com o tempo, mesmo sem commit novo. <span class="seen">Aula <a href="../lessons/0004-vulnerabilidades-com-trivy.html">0004</a></span></dd>
+
+  <dt>SHA (de commit)</dt>
+  <dd>O identificador de 40 caracteres de um commit. Numa action, <code>@&lt;sha&gt;</code> é imutável; já uma tag pode ser movida. Em tag anotada, vale o SHA da linha com <code>^{}</code>. <span class="seen">Aulas <a href="../lessons/0004-vulnerabilidades-com-trivy.html">0004</a>, <a href="../lessons/0005-cadeia-de-suprimentos.html">0005</a></span></dd>
 
   <dt>Segredo</dt>
   <dd>Qualquer valor que dá acesso a algo: senha, chave de API, token, chave privada. <span class="seen">Aula <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
