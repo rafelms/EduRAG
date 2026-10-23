@@ -150,9 +150,20 @@ git diff uv.lock    # só o certifi mudou de versão?</code></pre>
 <div class="table-wrap">
 <table>
   <tr><th>Prova</th><th>O que fazer</th><th>Quem deve ficar vermelho</th></tr>
-  <tr><td>Python</td><td>Em <code>pyproject.toml</code>, acrescente <code>"pyyaml==5.3"</code> às dependências e rode <code>uv lock</code></td><td><code>trivy-fs</code> (2 CRITICAL: <code>CVE-2020-14343</code> e <code>CVE-2020-1747</code>)</td></tr>
-  <tr><td>npm</td><td>Em <code>frontend/</code>: <code>npm install lodash@4.17.20</code></td><td><code>npm-audit</code> (1 HIGH, "Command Injection in lodash") e, talvez, o <code>trivy-fs</code></td></tr>
+  <tr><td>Python</td><td>Em <code>pyproject.toml</code>, acrescente <code>"pyyaml==5.3"</code> às dependências e <strong>rode <code>uv lock</code> antes do commit</strong></td><td><code>trivy-fs</code> (2 CRITICAL: <code>CVE-2020-14343</code> e <code>CVE-2020-1747</code>)</td></tr>
+  <tr><td>npm</td><td>Em <code>frontend/</code>: <code>npm install lodash@4.17.20</code></td><td><code>npm-audit</code> e <code>trivy-fs</code> (HIGH, <code>lodash</code>)</td></tr>
 </table>
+</div>
+
+<div class="note">
+  <p><strong>Observado no PR #14 (23/10/2026), e o que a primeira versão desta aula não avisou:</strong></p>
+  <ul>
+    <li><strong>O <code>backend</code> também fica vermelho se você esquecer o <code>uv lock</code>.</strong> O <code>ci.yml</code> usa <code>uv sync --locked</code>, que recusa um <code>uv.lock</code> fora de sincronia com o <code>pyproject.toml</code> (<code>error: The lockfile at uv.lock needs to be updated, but --locked was provided</code>). Foi o que aconteceu: o <code>pyproject.toml</code> pedia <code>pyyaml==5.3</code>, o lock ainda tinha <code>6.0.3</code>.</li>
+    <li><strong>Isso escondeu a prova do Python.</strong> Com o lock velho, o Trivy leu <code>uv.lock</code> com 0 vulnerabilidades. Só o npm foi provado.</li>
+    <li><strong>Vermelho pelo motivo errado não é prova.</strong> O <code>backend</code> falhou por inconsistência, não por vulnerabilidade. Antes do print, abra o log e confirme <em>por que</em> o job caiu.</li>
+    <li><strong>Com <code>uv lock</code> feito,</strong> o <code>backend</code> deve ficar verde (testei <code>uv sync --locked</code> com o <code>pyyaml 5.3</code>: instala) e só o <code>trivy-fs</code> (e o <code>npm-audit</code>, se o <code>lodash</code> continuar) barra.</li>
+    <li><strong>O banco de avisos mudou desde o meu teste</strong>, e é a lição do SCA em ação: o Trivy listou para o <code>lodash 4.17.20</code> dois avisos HIGH, <code>CVE-2021-23337</code> (corrigido na 4.17.21) e <code>CVE-2026-4800</code> (corrigido na 4.18.0, aviso novo). A severidade também varia por ferramenta e por banco: o <code>pyyaml</code> é CRITICAL, o <code>lodash</code> é HIGH. Eu havia escrito o CRITICAL só para a linha do Python.</li>
+  </ul>
 </div>
 
 <p>Testei os dois cenários numa cópia, fora do repositório: o <code>pyyaml==5.3</code> faz o Trivy sair com 1; o <code>lodash@4.17.20</code> faz o <code>npm audit</code> sair com 1. Antes de olhar o PR da prova do npm, <strong>aposte</strong>: o <code>trivy-fs</code> também vai ficar vermelho? Depois confira e anote o resultado, porque ele responde se vale manter as duas ferramentas no front.</p>
