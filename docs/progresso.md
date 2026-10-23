@@ -1,13 +1,13 @@
 # EduRAG: progresso
 
-> Atualizado em 19/10/2026. Referência: [spec.md](spec.md).
+> Atualizado em 23/10/2026. Referência: [spec.md](spec.md).
 
 ## Resumo
 
 - **Camada A (aplicação):** implementada e **validada ponta a ponta** com PostgreSQL + pgvector e Ollama reais (`qwen2.5:3b` e `nomic-embed-text`). Falta só a sua revisão do código.
 - **Qualidade da recuperação:** funciona, mas o limiar `MIN_SCORE` **não separa bem** perguntas do tema e fora do tema com esse modelo de embeddings (detalhes abaixo). Decisão tomada: aceitar a limitação e documentá-la na spec; quem segura as perguntas fora do tema é o prompt, não o limiar.
 - **Frontend (16/10/2026; na spec como RF09 e T11 desde 19/10/2026):** interface React + Tailwind em `frontend/`, servida por nginx no compose (porta 8080), pensada para o deploy na AWS. Validada ponta a ponta pelo proxy e conferida no navegador em 19/10/2026.
-- **Camada B (operação):** em andamento. Etapas 0 a 4 da pipeline concluídas (ver [pipeline-plano.md](pipeline-plano.md)): CI de backend e frontend, `main` protegida e gitleaks como portão de segredos. A próxima é a 5 (SAST).
+- **Camada B (operação):** em andamento. Etapas 0 a 5 da pipeline concluídas e a 6 pela metade (ver [pipeline-plano.md](pipeline-plano.md)): CI de backend e frontend, `main` protegida, gitleaks (segredos), Semgrep (SAST) e Trivy + `npm audit` (dependências vulneráveis), todos como checks obrigatórios. Falta da etapa 6 a cadeia de suprimentos (actions por SHA, cooldown do uv e Dependabot); depois, a 7 (build e scan das imagens).
 
 ## O que foi feito
 
@@ -186,7 +186,7 @@ Itens movidos para a Camada B, onde viram trabalho medido em vez de ajuste avuls
 
 Ordem sugerida na spec. Cada fase já tem o ponto de encaixe pronto na aplicação.
 
-- [ ] **F2: Pipeline segura** (em andamento: etapas 0 a 4 feitas, ver [pipeline-plano.md](pipeline-plano.md)). GitHub Actions com ruff, pytest (serviço Postgres para `TEST_DATABASE_URL`), Semgrep ou Bandit, Trivy, gitleaks, Dependabot e proteção de branch. O repositório já está no GitHub: `rafelms/EduRAG`.
+- [ ] **F2: Pipeline segura** (em andamento: etapas 0 a 5 feitas e a 6 pela metade, ver [pipeline-plano.md](pipeline-plano.md)). GitHub Actions com ruff, pytest (serviço Postgres para `TEST_DATABASE_URL`), Semgrep ou Bandit, Trivy, gitleaks, Dependabot e proteção de branch. O repositório já está no GitHub: `rafelms/EduRAG`.
 - [ ] **F3: Segredos e acesso.** SOPS ou Vault, API key ou JWT (middleware em `app/api/`) e rate limiting.
 - [ ] **F4: Observabilidade.** `/metrics` para Prometheus, Grafana, Loki e OpenTelemetry. O `request_id` e os logs JSON já existem. Inclui o painel de latência do LLM (veio da Camada A) e um alerta perto do `LLM_TIMEOUT_SECONDS`.
 - [ ] **F5: LLMOps.** Langfuse em `app/adapters/ollama_llm.py`, Ragas na CI (o conjunto de perguntas de referência serve também para calibrar o limiar), defesa contra prompt injection em `app/domain/prompts.py`, mascaramento de CPF e e-mail e custo em tokens. Inclui o experimento de `CHUNK_SIZE` (300 contra 800), medido com o conjunto de referência (veio da Camada A).
