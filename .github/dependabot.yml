@@ -1,0 +1,36 @@
+version: 2
+updates:
+  # Python: lê o pyproject.toml e atualiza o uv.lock
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python-menores:
+        update-types: [minor, patch]
+
+  # Frontend React
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    groups:
+      npm-menores:
+        update-types: [minor, patch]
+
+  # Imagens base (FROM) dos dois Dockerfiles
+  - package-ecosystem: docker
+    directories:
+      - /
+      - /frontend
+    schedule:
+      interval: weekly
+
+  # Actions fixadas por SHA: troca o SHA e o comentário # vX.Y.Z
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
