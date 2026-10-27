@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Imagens, Docker e Trivy</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Referência · da <a href="../lessons/0006-build-e-scan-de-imagens.html">aula 0006</a></p>
+  <h1>Imagens, Docker e Trivy</h1>
+</header>
+
+<h2>Os três PRs da etapa 7</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>PR</th><th>Branch</th><th>Entrega</th></tr>
+  <tr><td>1</td><td><code>ci/imagem-api</code></td><td><code>build.yml</code>, job <code>imagem-api</code></td></tr>
+  <tr><td>2</td><td><code>ci/imagem-front</code></td><td>Job <code>imagem-front</code> + os dois como checks obrigatórios</td></tr>
+  <tr><td>3</td><td><code>teste/imagem-vulneravel</code>, <code>teste/imagem-root</code></td><td>Provas; fechar sem mesclar</td></tr>
+</table>
+</div>
+
+<h2>Rodar local</h2>
+<pre><code>docker build -t edurag-api:teste .
+docker build -t edurag-front:teste frontend
+
+# scan (Fedora: :Z)
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock:Z \
+  ghcr.io/aquasecurity/trivy:0.76.1 image --scanners vuln \
+  --severity CRITICAL --ignore-unfixed edurag-api:teste
+
+# quem executa? (0 = root)
+docker run --rm --entrypoint id edurag-api:teste -u</code></pre>
+
+<h2>Job de imagem: o que conferir</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Item</th><th>Valor</th><th>Por quê</th></tr>
+  <tr><td>Id do job</td><td><code>imagem-api</code> / <code>imagem-front</code></td><td>Vira check obrigatório; único entre workflows</td></tr>
+  <tr><td>Buildx</td><td><code>docker/setup-buildx-action</code> (driver <code>docker-container</code> por padrão)</td><td>Permite exportar cache</td></tr>
+  <tr><td>Build</td><td><code>push: false</code>, <code>load: true</code>, <code>tags</code></td><td>A imagem fica no Docker local do runner para o scan</td></tr>
+  <tr><td>Cache</td><td><code>type=gha</code>, <code>mode=max</code>, <code>scope</code> por imagem</td><td>Escopo igual = um sobrescreve o cache do outro</td></tr>
+  <tr><td>Scan</td><td>trivy-action <code>scan-type: image</code>, <code>image-ref</code>, <code>severity: CRITICAL</code>, <code>exit-code: '1'</code></td><td>Barra CRITICAL</td></tr>
+  <tr><td>Não-root</td><td><code>id -u</code> na imagem, falha se for <code>0</code></td><td>Mostra o usuário real, não o que o Dockerfile diz</td></tr>
+  <tr><td>Actions</td><td>Todas por SHA (<code>^{}</code> em tag anotada)</td><td>Cadeia de suprimentos</td></tr>
+</table>
+</div>
+
+<h2>Medido em 23/10/2026 (Trivy 0.76.1)</h2>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th><code>api</code> (python:3.12-slim)</th><th><code>front</code> (nginx-unprivileged:1.29-alpine)</th></tr>
+  <tr><td>Tamanho</td><td>311 MB</td><td>83 MB</td></tr>
+  <tr><td>CRITICAL</td><td>0</td><td>0</td></tr>
+  <tr><td>HIGH</td><td>44, sem correção</td><td>44, com correção</td></tr>
+  <tr><td>Usuário</td><td><code>edurag</code> (10001)</td><td><code>nginx</code> (101)</td></tr>
+</table>
+</div>
+<p><strong>Para as provas:</strong> <code>nginx-unprivileged:1.21-alpine</code> (Alpine 3.15.4, fim de suporte) dá 9 CRITICAL com correção e ainda constrói; remover o <code>USER</code> do <code>Dockerfile</code> da API faz o <code>id -u</code> devolver <code>0</code>. A base <code>python:3.9</code> tem CRITICAL, mas não serve de prova: o <code>uv sync</code> exige Python 3.12 e o build quebra antes do scan.</p>
+
+<h2>Multi-stage</h2>
+<p>Só o <strong>último</strong> <code>FROM</code> vira a imagem entregue. O estágio <code>builder</code> (Node, <code>npm</code>, <code>uv</code>) só entrega arquivos por <code>COPY --from=builder</code> e não aparece no scan.</p>
+
+<p><a href="glossario.html">Glossário</a> · <a href="dependencias-sca.html">Dependências e SCA</a> · <a href="sast-semgrep.html">SAST e Semgrep</a></p>
+
+</main>
+</body>
+</html>
