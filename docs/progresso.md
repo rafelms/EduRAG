@@ -1,13 +1,13 @@
 # EduRAG: progresso
 
-> Atualizado em 23/10/2026. Referência: [spec.md](spec.md).
+> Atualizado em 28/10/2026. Referência: [spec.md](spec.md).
 
 ## Resumo
 
 - **Camada A (aplicação):** implementada e **validada ponta a ponta** com PostgreSQL + pgvector e Ollama reais (`qwen2.5:3b` e `nomic-embed-text`). Falta só a sua revisão do código.
 - **Qualidade da recuperação:** funciona, mas o limiar `MIN_SCORE` **não separa bem** perguntas do tema e fora do tema com esse modelo de embeddings (detalhes abaixo). Decisão tomada: aceitar a limitação e documentá-la na spec; quem segura as perguntas fora do tema é o prompt, não o limiar.
 - **Frontend (16/10/2026; na spec como RF09 e T11 desde 19/10/2026):** interface React + Tailwind em `frontend/`, servida por nginx no compose (porta 8080), pensada para o deploy na AWS. Validada ponta a ponta pelo proxy e conferida no navegador em 19/10/2026.
-- **Camada B (operação):** em andamento. Etapas 0 a 5 da pipeline concluídas e a 6 pela metade (ver [pipeline-plano.md](pipeline-plano.md)): CI de backend e frontend, `main` protegida, gitleaks (segredos), Semgrep (SAST) e Trivy + `npm audit` (dependências vulneráveis), todos como checks obrigatórios. Falta da etapa 6 a cadeia de suprimentos (actions por SHA, cooldown do uv e Dependabot); depois, a 7 (build e scan das imagens).
+- **Camada B (operação):** em andamento. Etapas 0 a 5 da pipeline concluídas e a 6 quase concluída (ver [pipeline-plano.md](pipeline-plano.md)): CI de backend e frontend, `main` protegida, gitleaks (segredos), Semgrep (SAST) e Trivy + `npm audit` (dependências vulneráveis), todos como checks obrigatórios. Da cadeia de suprimentos, as actions já estão fixadas por SHA e o Dependabot está ativo (primeira rodada de 8 PRs mesclada em 28/10). Falta da etapa 6 só o cooldown do uv, a partir de 30/10; depois, a 7 (build e scan das imagens).
 
 ## O que foi feito
 
