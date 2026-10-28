@@ -90,7 +90,7 @@ Para cada ferramenta: primeiro rodar em modo de relatório, corrigir o que apare
 
 ### Etapa 6 — Dependências
 
-**Em andamento: parte 1 concluída, parte 2 pendente.** Aulas: [0004](estudo/lessons/0004-vulnerabilidades-com-trivy.html) (portão de vulnerabilidades) e [0005](estudo/lessons/0005-cadeia-de-suprimentos.html) (cadeia de suprimentos).
+**Em andamento: parte 1 concluída; da parte 2 falta só o cooldown do uv (a partir de 30/10).** Aulas: [0004](estudo/lessons/0004-vulnerabilidades-com-trivy.html) (portão de vulnerabilidades) e [0005](estudo/lessons/0005-cadeia-de-suprimentos.html) (cadeia de suprimentos).
 
 *Parte 1: portão de vulnerabilidades (aula 0004)*
 - [x] Corrigir o CRITICAL que o Trivy já achava (`certifi 2026.7.22` → `2026.10.19`): [PR #12](https://github.com/rafelms/EduRAG/pull/12).
@@ -100,9 +100,9 @@ Para cada ferramenta: primeiro rodar em modo de relatório, corrigir o que apare
 **Provado em 23/10/2026 ([PR #14](https://github.com/rafelms/EduRAG/pull/14)):** [`trivy-fs` falhou](https://github.com/rafelms/EduRAG/actions/runs/39982005609/job/120511410590) com `pyyaml 5.3` (2 CRITICAL) no `uv.lock` e `lodash 4.17.20` (2 HIGH) no `package-lock.json`; [`npm-audit` falhou](https://github.com/rafelms/EduRAG/actions/runs/39982005609/job/120511411002) com `lodash`; `backend`, `frontend` e `gitleaks` passaram; merge bloqueado. O PR foi fechado sem merge. Na primeira tentativa, o `backend` caiu por `uv.lock` fora de sincronia (faltou `uv lock`) e o Trivy viu o `uv.lock` limpo: vermelho pelo motivo errado não vale como prova.
 
 *Parte 2: cadeia de suprimentos (aula 0005)*
-- [ ] Fixar por SHA todas as actions de `ci.yml` e `security.yml` (hoje o Semgrep acusa 12 usos por tag), com o comentário `# vX.Y.Z`.
-- [ ] Cooldown no uv (`exclude-newer`) e uv novo no `Dockerfile` (o `uv:0.5` não lê a duração relativa). Decidir o que fazer com o `certifi`, que o cooldown rebaixaria.
-- [ ] `.github/dependabot.yml` para Python (`uv`), npm, Docker e GitHub Actions (é arquivo de configuração, não job).
+- [x] Fixar por SHA todas as actions de `ci.yml` e `security.yml` (o Semgrep acusava 12 usos por tag), com o comentário `# vX.Y.Z`: [PR #17](https://github.com/rafelms/EduRAG/pull/17).
+- [ ] Cooldown no uv (`exclude-newer`) e uv novo no `Dockerfile` (o `uv:0.5` não lê a duração relativa). Decidir o que fazer com o `certifi`, que o cooldown rebaixaria. **Só a partir de 30/10:** o PR #24 subiu o mínimo do `fastapi` para a 0.162.0 (23/10), e com o cooldown ativo antes disso o `uv lock` falha. Junto, `cooldown` com `default-days: 7` no bloco `uv` do `dependabot.yml`, para o Dependabot não propor mínimos que o uv ainda não aceita.
+- [x] `.github/dependabot.yml` para Python (`uv`), npm, Docker e GitHub Actions (é arquivo de configuração, não job): [PR #18](https://github.com/rafelms/EduRAG/pull/18). Primeira rodada em 27/10/2026: 8 PRs (#19 a #26), todos com merge em 28/10; o primeiro foi o [PR #25](https://github.com/rafelms/EduRAG/pull/25). O *Insights → Dependency graph → Dependabot* leu os 4 blocos sem erro. O #20 e o #23 levaram o frontend para a Node 26 e a CI foi alinhada no [PR #27](https://github.com/rafelms/EduRAG/pull/27).
 
 *Pronto quando:* o Semgrep não acusa mais cadeia de suprimentos e o Dependabot abriu o primeiro PR.
 *Para estudar:* SCA, CVE, por que fixar as actions é segurança de cadeia de suprimentos (caso real: o ataque à `trivy-action` em março de 2026).
