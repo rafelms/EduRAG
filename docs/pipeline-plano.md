@@ -109,7 +109,7 @@ Para cada ferramenta: primeiro rodar em modo de relatório, corrigir o que apare
 
 ### Etapa 7 — Build e scan das imagens
 
-**Depende da etapa 6 inteira** (uv novo no `Dockerfile`, actions por SHA). Aula: [0006](estudo/lessons/0006-build-e-scan-de-imagens.html). Situação medida em 23/10/2026 (Trivy 0.76.1): `api` e `front` com 0 CRITICAL; as duas já rodam sem root (uid 10001 e 101); 44 HIGH em cada, sem correção no `api` e com correção no `front`.
+**Dependia de dois itens da etapa 6, ambos feitos:** actions por SHA (PR #17) e uv novo no `Dockerfile` ([PR #29](https://github.com/rafelms/EduRAG/pull/29): `uv:0.13.1` por digest e `uv sync --locked`). O cooldown que falta da etapa 6 não toca em nenhum arquivo desta etapa, e as duas andam em paralelo. Aula: [0006](estudo/lessons/0006-build-e-scan-de-imagens.html). Situação medida em 23/10/2026 (Trivy 0.76.1): `api` e `front` com 0 CRITICAL; as duas já rodam sem root (uid 10001 e 101); 44 HIGH em cada, sem correção no `api` e com correção no `front`.
 
 - [ ] **PR 1 (`ci/imagem-api`):** novo `.github/workflows/build.yml` com o job `imagem-api`: checkout → Buildx → build (`push: false`, `load: true`, cache `type=gha` com `scope` próprio) → `trivy image` falhando em CRITICAL → checagem de não-root (`id -u` diferente de `0`). Actions fixadas por SHA desde o início.
 - [ ] **PR 2 (`ci/imagem-front`):** job `imagem-front` (contexto `frontend/`, Nginx servindo o build do React), e os dois jobs como checks obrigatórios do `protege-main`.

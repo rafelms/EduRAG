@@ -16,10 +16,16 @@
 </header>
 
 <div class="note">
-  <p><strong>Pré-requisito:</strong> termine a etapa 6 antes (<a href="0005-cadeia-de-suprimentos.html">aula 0005</a>). Dois motivos concretos: o <code>Dockerfile</code> do <code>api</code> precisa do uv novo para ler o cooldown, e o job novo desta aula vai ser o primeiro a <em>construir</em> o <code>Dockerfile</code> na CI. Se o uv ainda for o <code>0.5</code>, é aqui que o erro apareceria.</p>
+  <p><strong>Pré-requisito (atualizado em 28/10):</strong> a etapa 7 dependia de duas coisas da etapa 6, e as duas estão feitas: actions fixadas por SHA (PR #17) e o uv novo no <code>Dockerfile</code> (<a href="https://github.com/rafelms/EduRAG/pull/29">PR #29</a>: <code>uv:0.13.1</code> fixado por digest e <code>uv sync --locked</code>). O que sobrou da etapa 6, o cooldown no <code>pyproject.toml</code> a partir de 30/10, não toca em nenhum arquivo desta etapa. As duas andam em paralelo.</p>
 </div>
 
+<h2>O que esta etapa faz</h2>
+
 <p>Até agora a pipeline verificou <em>texto</em>: segredos, código, lockfiles. A etapa 7 verifica o <strong>artefato</strong> que vai para a AWS: a imagem. É nela que mora o que o <code>uv.lock</code> não mostra: o sistema operacional da imagem base (Debian, Alpine), o nginx e o usuário que executa o processo.</p>
+
+<p>Você já sentiu falta deste portão. Na primeira rodada do Dependabot (<a href="../learning-records/0007-primeira-rodada-do-dependabot.md">registro 0007</a>), os PRs #19 e #20 trocaram as imagens base do front e ficaram verdes <strong>sem que nenhum check construísse o <code>Dockerfile</code></strong>. A conferência foi feita à mão. Depois desta etapa, um PR desses só fica verde se a imagem construir, não tiver CRITICAL e não rodar como root.</p>
+
+<p>Em uma frase: <strong>construir cada imagem na CI, escanear e barrar o PR se ela falhar.</strong> Ainda não publica nada. Publicar é a etapa 8.</p>
 
 <h2>O mapa da etapa 7</h2>
 
@@ -34,6 +40,8 @@
 </table>
 </div>
 
+<p>Os PRs são seus, então, quando um ficar "out of date" por causa da regra <code>strict</code>, você <strong>pode</strong> clicar em <em>Update branch</em>. A regra de não clicar vale só para PR do Dependabot. Com o <code>gh</code> instalado, <code>gh pr checks &lt;número&gt; --watch</code> acompanha os checks pelo terminal.</p>
+
 <h2>Aquecimento: escreva de memória</h2>
 
 <p>Na aula 0004 você escreveu o job <code>trivy-fs</code>. Feche o <code>security.yml</code> e escreva num arquivo à parte o <strong>esqueleto</strong> dele (id, <code>runs-on</code>, <code>permissions</code>, e os steps com <code>uses</code> e <code>with</code>). Depois compare. É o mesmo exercício do ponto fraco registrado nas últimas três etapas: a estrutura YAML.</p>
@@ -42,12 +50,12 @@
 
 <p>O <code>trivy image</code> faz duas varreduras: os <strong>pacotes do sistema operacional</strong> (casados pela distribuição, como Debian ou Alpine) e os <strong>pacotes de linguagem</strong> (como os do Python). Por padrão ele procura a imagem no Docker local, antes de tentar um registro.<span class="source"> (<a href="https://trivy.dev/latest/docs/target/container_image/">Trivy: Container Image</a>)</span></p>
 
-<p>Medi as duas imagens do projeto em 23/10/2026, com o Trivy 0.76.1:</p>
+<p>Medi as duas imagens do projeto em 23/10/2026, com o Trivy 0.76.1. <strong>Esta tabela está desatualizada de propósito:</strong> depois dela, o Dependabot trocou a base do <code>front</code> para <code>nginx-unprivileged:1.31-alpine</code> e o estágio de build para <code>node:26-alpine</code> (PRs #19 e #20). Em 28/10 o <code>front</code> já estava com 92 MB, e os uids continuam 10001 e 101. As vulnerabilidades você mede na Parte 1.</p>
 
 <div class="table-wrap">
 <table>
   <tr><th></th><th><code>api</code></th><th><code>front</code></th></tr>
-  <tr><td>Base</td><td><code>python:3.12-slim</code> (Debian 13.7)</td><td><code>nginx-unprivileged:1.29-alpine</code> (Alpine 3.23.4)</td></tr>
+  <tr><td>Base</td><td><code>python:3.12-slim</code> (Debian 13.7)</td><td><code>nginx-unprivileged:1.29-alpine</code> (Alpine 3.23.4), hoje 1.31</td></tr>
   <tr><td>Tamanho</td><td>311 MB</td><td>83 MB</td></tr>
   <tr><td>CRITICAL</td><td><strong>0</strong></td><td><strong>0</strong></td></tr>
   <tr><td>HIGH</td><td>44, <em>todos sem correção</em></td><td>44, <em>todos com correção</em></td></tr>
@@ -55,13 +63,15 @@
 </table>
 </div>
 
-<p>Duas leituras valem a pena. Primeiro, <strong>o portão de CRITICAL passa hoje nas duas</strong>, como o plano espera. Segundo, a linha dos HIGH: no <code>api</code>, ninguém tem o que atualizar (o Debian ainda não publicou correção); no <code>front</code>, a correção <em>existe</em> e a imagem base é que está desatualizada. Se você usasse <code>HIGH</code> como portão, o <code>front</code> ficaria vermelho por um problema que se resolve com uma tag de base mais nova. Quem traz essa tag é o Dependabot do ecossistema <code>docker</code>, da aula 0005.</p>
+<p>Duas leituras valem a pena, ambas sobre a medição de 23/10. Primeiro, <strong>o portão de CRITICAL passava nas duas</strong>, como o plano espera. Segundo, a linha dos HIGH: no <code>api</code>, ninguém tem o que atualizar (o Debian ainda não publicou correção); no <code>front</code>, a correção <em>existe</em> e a imagem base é que está desatualizada. Se você usasse <code>HIGH</code> como portão, o <code>front</code> ficaria vermelho por um problema que se resolve com uma tag de base mais nova. Quem traz essa tag é o Dependabot do ecossistema <code>docker</code>, da aula 0005, e ele trouxe: o PR #19 subiu a base para a 1.31.</p>
+
+<p><strong>Aposte antes da Parte 1:</strong> depois do PR #19, os 44 HIGH do <code>front</code> caíram, ficaram iguais ou subiram? E os do <code>api</code>, que não mudou de base?</p>
 
 <p><strong>Aposte antes de seguir:</strong> o <code>front</code> final só tem o nginx e os arquivos estáticos. O Node, o <code>npm</code> e o <code>node_modules</code> do estágio de build aparecem no scan? Dica: olhe os dois <code>FROM</code> do <code>frontend/Dockerfile</code>.</p>
 
 <details>
   <summary>Resposta</summary>
-  <p>Não aparecem. O Dockerfile é <em>multi-stage</em>: o estágio <code>builder</code> (<code>node:24-alpine</code>) gera o <code>dist/</code>, e só essa pasta é copiada (<code>COPY --from=builder</code>) para o estágio final. A imagem entregue é a do último <code>FROM</code>. O mesmo vale para o <code>api</code>: o <code>uv</code> fica no estágio de build e a imagem final nem o tem (está no comentário do seu Dockerfile).</p>
+  <p>Não aparecem. O Dockerfile é <em>multi-stage</em>: o estágio <code>builder</code> (<code>node:26-alpine</code>, desde o PR #20) gera o <code>dist/</code>, e só essa pasta é copiada (<code>COPY --from=builder</code>) para o estágio final. A imagem entregue é a do último <code>FROM</code>. O mesmo vale para o <code>api</code>: o <code>uv</code> fica no estágio de build e a imagem final nem o tem (está no comentário do seu Dockerfile).</p>
 </details>
 
 <h2>Parte 1: rode local primeiro</h2>
@@ -87,7 +97,11 @@ docker run --rm --entrypoint id edurag-front:teste -u</code></pre>
 </table>
 </div>
 
-<p>Anote os números e compare com a tabela acima. Se o seu <code>api</code> mostrar um CRITICAL que o meu não mostrou, o banco de avisos mudou desde que medi: é o SCA de novo, agora numa imagem.</p>
+<p>Anote os números, compare com a tabela acima e confira a sua aposta. Duas coisas mudaram desde 23/10: a base do <code>front</code> e o próprio banco de avisos. Se o <code>api</code>, que não trocou de base, mostrar números diferentes, o motivo é o banco: é o SCA de novo, agora numa imagem. Traga os números, que eu atualizo a tabela.</p>
+
+<div class="note">
+  <p><strong>Se o download do banco estourar o tempo</strong> (<code>context deadline exceeded</code>, como aconteceu em 28/10), baixe uma vez num volume e reaproveite: <code>-v trivy-cache:/root/.cache</code> nos dois comandos, <code>--download-db-only --db-repository ghcr.io/aquasecurity/trivy-db:2 --timeout 30m</code> no primeiro e <code>--skip-db-update</code> nos scans.</p>
+</div>
 
 <h2>Parte 2: PR 1, o job imagem-api</h2>
 
@@ -145,7 +159,7 @@ jobs:
 <div class="table-wrap">
 <table>
   <tr><th>Prova</th><th>O que fazer</th><th>Quem deve ficar vermelho</th></tr>
-  <tr><td>Imagem vulnerável</td><td>Em <code>frontend/Dockerfile</code>, troque a base final de <code>nginx-unprivileged:1.29-alpine</code> para <code>nginx-unprivileged:1.21-alpine</code></td><td><code>imagem-front</code>, no step do Trivy (Alpine 3.15.4, fim de suporte; 9 CRITICAL, todos com correção)</td></tr>
+  <tr><td>Imagem vulnerável</td><td>Em <code>frontend/Dockerfile</code>, troque a base final de <code>nginx-unprivileged:1.31-alpine</code> para <code>nginx-unprivileged:1.21-alpine</code></td><td><code>imagem-front</code>, no step do Trivy (Alpine 3.15.4, fim de suporte; 9 CRITICAL, todos com correção)</td></tr>
   <tr><td>Imagem root</td><td>Em <code>Dockerfile</code>, comente a linha <code>USER edurag</code></td><td><code>imagem-api</code>, no step do não-root (o <code>id -u</code> devolve <code>0</code>)</td></tr>
 </table>
 </div>
@@ -163,7 +177,7 @@ jobs:
 <p><strong>Imagem base slim reduz vulnerabilidades?</strong> Não aceite a frase de ninguém, nem a minha: meça. Escaneie <code>python:3.12</code> e <code>python:3.12-slim</code> com o mesmo comando da Parte 1 e compare o tamanho e a contagem de HIGH e CRITICAL. <strong>Aposte antes:</strong> quantas vezes maior é a imagem completa? A diferença nas vulnerabilidades acompanha a do tamanho? Traga os números e eu confiro com você.</p>
 
 <h2>Recupere da memória</h2>
-<p>Responda sem voltar ao texto. As duas últimas retomam as aulas 0005 e 0004.</p>
+<p>Responda sem voltar ao texto. As três últimas retomam as aulas 0005 e 0004 e a primeira rodada do Dependabot.</p>
 
 <div class="quiz">
   <div class="question" data-answer="2">
@@ -183,7 +197,7 @@ jobs:
       <button>Os CRITICAL, que o Trivy não consegue detectar</button>
       <button>Os pacotes Python, que o Trivy não escaneia</button>
     </div>
-    <p class="feedback" data-ok="Certo. Os 44 HIGH do front têm correção: é base desatualizada, assunto do Dependabot." data-bad="Não. O Trivy detecta CRITICAL e escaneia pacotes Python. O que passa são os HIGH, porque o portão só barra CRITICAL."></p>
+    <p class="feedback" data-ok="Certo. Em 23/10, os 44 HIGH do front tinham correção: era base desatualizada, assunto do Dependabot." data-bad="Não. O Trivy detecta CRITICAL e escaneia pacotes Python. O que passa são os HIGH, porque o portão só barra CRITICAL."></p>
   </div>
 
   <div class="question" data-answer="1">
@@ -224,6 +238,16 @@ jobs:
       <button>Porque o python:3.9 não tem nenhum CRITICAL nele</button>
     </div>
     <p class="feedback" data-ok="Certo. O projeto exige Python 3.12: o build falharia antes do Trivy, e vermelho pelo motivo errado não é prova." data-bad="Não. A base 3.9 tem CRITICAL, mas o uv sync exige Python 3.12 e o build quebra antes do scan."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">7. Um PR do Dependabot ficou "out of date". O que fazer?</p>
+    <div class="options">
+      <button>Clicar em Update branch e mesclar em seguida</button>
+      <button>Resolver o conflito no editor web do GitHub</button>
+      <button>Comentar @dependabot rebase e esperar os checks verdes</button>
+    </div>
+    <p class="feedback" data-ok="Isso. O bot refaz o branch em cima da main e os checks rodam de novo; nada de commit seu no branch dele." data-bad="Não. Qualquer commit seu no branch do Dependabot (Update branch ou editor de conflitos) faz o bot parar de cuidar do PR. Comente @dependabot rebase."></p>
   </div>
 </div>
 
