@@ -97,10 +97,26 @@ docker run --rm --entrypoint id edurag-front:teste -u</code></pre>
 </table>
 </div>
 
-<p>Anote os números, compare com a tabela acima e confira a sua aposta. Duas coisas mudaram desde 23/10: a base do <code>front</code> e o próprio banco de avisos. Se o <code>api</code>, que não trocou de base, mostrar números diferentes, o motivo é o banco: é o SCA de novo, agora numa imagem. Traga os números, que eu atualizo a tabela.</p>
+<p>Anote os números, compare com a tabela acima e confira a sua aposta. Duas coisas mudaram desde 23/10: a base do <code>front</code> e o próprio banco de avisos. Se o <code>api</code>, que não trocou de base, mostrar números diferentes, o motivo é o banco: é o SCA de novo, agora numa imagem. Para contar os HIGH, rode o mesmo scan com <code>--severity HIGH</code>, uma vez sem e outra com <code>--ignore-unfixed</code>.</p>
+
+<details>
+  <summary>Resultado de 28/10/2026 (Trivy 0.76.1)</summary>
+  <div class="table-wrap">
+  <table>
+    <tr><th></th><th><code>api</code>: 23/10 → 28/10</th><th><code>front</code>: 23/10 → 28/10</th></tr>
+    <tr><td>SO da base</td><td>Debian 13.7 → 13.7</td><td>Alpine 3.23.4 → <strong>3.24.2</strong></td></tr>
+    <tr><td>Tamanho</td><td>311 → 314 MB</td><td>83 → 91,4 MB</td></tr>
+    <tr><td>CRITICAL</td><td>0 → 0</td><td>0 → 0</td></tr>
+    <tr><td>HIGH</td><td>44 → <strong>44</strong>, todos sem correção</td><td>44 → <strong>3</strong>, todos com correção</td></tr>
+    <tr><td>uid</td><td>10001 → 10001</td><td>101 → 101</td></tr>
+  </table>
+  </div>
+  <p><strong>Front:</strong> os HIGH caíram de 44 para 3. A troca de base pelo Dependabot (PR #19) fez o que o portão não faria. Os 3 que sobraram têm correção: o Alpine já publicou pacotes novos, mas a imagem do nginx ainda não foi reconstruída com eles. Um <code>docker build --pull</code> busca a versão mais recente da mesma tag; o runner da CI sempre baixa a base do zero, então o número lá pode ser diferente.</p>
+  <p><strong>Api:</strong> a base não mudou e os 44 continuam. A maioria são só quatro CVEs do <code>util-linux</code>, repetidos em uns dez pacotes que saem do mesmo código-fonte (<code>mount</code>, <code>libmount1</code>, <code>libblkid1</code>…), e todos estão como <code>affected</code> ou <code>fix_deferred</code>: não há o que atualizar. Os pacotes Python estão limpos. Com <code>--ignore-unfixed</code>, o <code>api</code> fica em 0 HIGH, e o <code>front</code>, em 3.</p>
+</details>
 
 <div class="note">
-  <p><strong>Se o download do banco estourar o tempo</strong> (<code>context deadline exceeded</code>, como aconteceu em 28/10), baixe uma vez num volume e reaproveite: <code>-v trivy-cache:/root/.cache</code> nos dois comandos, <code>--download-db-only --db-repository ghcr.io/aquasecurity/trivy-db:2 --timeout 30m</code> no primeiro e <code>--skip-db-update</code> nos scans.</p>
+  <p><strong>Se o download do banco estourar o tempo</strong> (<code>context deadline exceeded</code>, como aconteceu em 28/10), baixe uma vez num volume e reaproveite. Construa as imagens primeiro; depois, <code>-v trivy-cache:/root/.cache</code> em todos os comandos do Trivy, <code>image --download-db-only --timeout 30m</code> no primeiro (acrescente <code>--db-repository ghcr.io/aquasecurity/trivy-db:2</code> se o mirror padrão falhar) e <code>--skip-db-update</code> nos scans. No PowerShell, escreva cada comando numa linha só (a <code>\</code> no fim da linha é do bash) e dispense o <code>:Z</code>, que é do SELinux. Para não inundar o terminal, <code>| Select-String "Total:"</code> mostra só os totais.</p>
 </div>
 
 <h2>Parte 2: PR 1, o job imagem-api</h2>

@@ -50,16 +50,17 @@ docker run --rm --entrypoint id edurag-api:teste -u</code></pre>
 </table>
 </div>
 
-<h2>Medido em 23/10/2026 (Trivy 0.76.1)</h2>
+<h2>Medido em 28/10/2026 (Trivy 0.76.1)</h2>
 <div class="table-wrap">
 <table>
-  <tr><th></th><th><code>api</code> (python:3.12-slim)</th><th><code>front</code> (nginx-unprivileged:1.29-alpine; hoje 1.31, medir de novo)</th></tr>
-  <tr><td>Tamanho</td><td>311 MB</td><td>83 MB</td></tr>
+  <tr><th></th><th><code>api</code> (python:3.12-slim, Debian 13.7)</th><th><code>front</code> (nginx-unprivileged:1.31-alpine, Alpine 3.24.2)</th></tr>
+  <tr><td>Tamanho</td><td>314 MB</td><td>91,4 MB</td></tr>
   <tr><td>CRITICAL</td><td>0</td><td>0</td></tr>
-  <tr><td>HIGH</td><td>44, sem correção</td><td>44, com correção</td></tr>
+  <tr><td>HIGH</td><td>44, sem correção</td><td>3, com correção</td></tr>
   <tr><td>Usuário</td><td><code>edurag</code> (10001)</td><td><code>nginx</code> (101)</td></tr>
 </table>
 </div>
+<p>Em 23/10, com a base 1.29 (Alpine 3.23.4), o <code>front</code> tinha 44 HIGH com correção; a troca de base pelo Dependabot (PR #19) levou para 3. O <code>api</code> não mudou.</p>
 <p><strong>Para as provas:</strong> <code>nginx-unprivileged:1.21-alpine</code> (Alpine 3.15.4, fim de suporte) dá 9 CRITICAL com correção e ainda constrói; remover o <code>USER</code> do <code>Dockerfile</code> da API faz o <code>id -u</code> devolver <code>0</code>. A base <code>python:3.9</code> tem CRITICAL, mas não serve de prova: o <code>uv sync</code> exige Python 3.12 e o build quebra antes do scan.</p>
 
 <h2>Multi-stage</h2>
