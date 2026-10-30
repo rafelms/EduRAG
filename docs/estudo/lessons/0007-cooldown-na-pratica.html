@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cooldown na prática</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Aula 0007 · Fim da etapa 6 do <a href="../../pipeline-plano.md">pipeline-plano</a> · ~30 min</p>
+  <h1>Cooldown na prática</h1>
+  <p class="subtitle">Não aceitar uma versão no dia em que ela sai. Com números do seu próprio <code>uv.lock</code>.</p>
+</header>
+
+<h2>Para que serve, em uma frase</h2>
+
+<p>Quando você roda <code>uv lock --upgrade</code> (ou o Dependabot abre um PR), a ferramenta pega a <strong>versão mais nova</strong> de cada pacote. A mais nova é também a <strong>menos examinada</strong>: ninguém ainda teve tempo de notar se ela veio com algo que não devia. O cooldown diz: <em>"só aceito versões publicadas há pelo menos 7 dias"</em>. Se uma versão maliciosa for descoberta e removida nesse prazo, ela nunca chega ao seu lock.</p>
+
+<p>Isso não é teoria. Em dezembro de 2024, quatro versões do pacote <code>ultralytics</code> (8.3.41, 8.3.42, 8.3.45 e 8.3.46) foram publicadas no PyPI com código malicioso, através da própria pipeline de publicação do projeto, que foi comprometida pelo <strong>cache do GitHub Actions</strong>. As quatro foram removidas.<span class="source"> (<a href="https://blog.pypi.org/posts/2024-12-11-ultralytics-attack-analysis/">PyPI: análise do ataque à ultralytics</a>)</span> A análise não diz quanto tempo elas ficaram no ar. Mas quem tinha cooldown só correria risco se elas tivessem ficado mais que o prazo.</p>
+
+<div class="note">
+  <p><strong>Liga com o que você já fez:</strong> fixar actions por SHA (aula 0005) protege contra <em>tag movida</em>. O cooldown protege contra <em>versão nova envenenada</em>. Os dois são cadeia de suprimentos: o SHA trava o que você já confia, o cooldown atrasa o que você ainda não conhece.</p>
+</div>
+
+<h2>O exemplo prático: o seu lock de hoje</h2>
+
+<p>Rodei <code>uv lock --upgrade --dry-run</code> (mostra o que mudaria, sem gravar) no seu <code>uv.lock</code> atual, com o uv 0.13.1 do <code>Dockerfile</code>, duas vezes: sem cooldown e com o corte de 7 dias valendo para hoje à tarde (30/10, 15:48).</p>
+
+<p><strong>Aposte antes de abrir:</strong> sem cooldown, o <code>--upgrade</code> traria 12 atualizações. Quantas o cooldown seguraria?</p>
+
+<details>
+  <summary>Resultado de 30/10/2026</summary>
+  <div class="table-wrap">
+  <table>
+    <tr><th>Pacote</th><th>No lock</th><th>Sem cooldown</th><th>Com 7 dias</th></tr>
+    <tr><td><code>coverage</code></td><td>7.16.2</td><td>7.17.0</td><td>7.17.0</td></tr>
+    <tr><td><code>pluggy</code></td><td>1.6.0</td><td>1.7.0</td><td>1.7.0</td></tr>
+    <tr><td><code>websockets</code></td><td>17.2</td><td>17.3</td><td>17.3</td></tr>
+    <tr><td><code>starlette</code></td><td>1.8.0</td><td>1.10.0 <small>(24/10)</small></td><td><strong>1.9.0</strong> <small>(18/10)</small></td></tr>
+    <tr><td><code>pydantic</code> / <code>pydantic-core</code></td><td>2.14.1 / 2.50.1</td><td>2.14.2 / 2.50.2</td><td><strong>segura</strong></td></tr>
+    <tr><td><code>pydantic-settings</code></td><td>2.16.1</td><td>2.16.2</td><td><strong>segura</strong></td></tr>
+    <tr><td><code>pypdf</code></td><td>6.21.2</td><td>6.21.4</td><td><strong>segura</strong></td></tr>
+    <tr><td><code>pytest</code>, <code>ruff</code>, <code>tzdata</code>, <code>opentelemetry-api</code></td><td>—</td><td>sobem</td><td><strong>seguram</strong></td></tr>
+  </table>
+  </div>
+  <p><strong>8 de 12 ficaram de fora</strong>, e a <code>starlette</code> é o caso mais didático: o cooldown não "congelou" o pacote. Ele pulou a 1.10.0, de 6 dias, e pegou a 1.9.0, que já tinha 12. Se a 1.10.0 fosse a versão envenenada, você não a teria.</p>
+  <p>Conferi no <a href="https://osv.dev">OSV</a>: a <code>pypdf 6.21.2</code> que você tem não tem aviso de segurança. Nenhuma dessas esperas custou uma correção.</p>
+</details>
+
+<h2>O custo: a correção também espera</h2>
+
+<p>O <code>exclude-newer</code> do uv não distingue novidade de correção. Se amanhã sair uma correção de CRITICAL, o <code>uv lock</code> não a aceita por 7 dias, e o <code>trivy-fs</code> fica vermelho. Você viu isso com o <code>certifi</code> na aula 0005. O Dependabot distingue: o <code>cooldown</code> dele <q>só está disponível para atualizações de <em>versão</em>, não de <em>segurança</em></q>.<span class="source"> (<a href="https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference">Dependabot options reference</a>)</span></p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Situação</th><th>O que fazer</th></tr>
+  <tr><td>Versão nova comum</td><td>Nada. Espera os 7 dias.</td></tr>
+  <tr><td>Correção de segurança com menos de 7 dias</td><td><code>exclude-newer-package = { PACOTE = false }</code> no <code>[tool.uv]</code>, <code>uv lock --upgrade-package PACOTE</code>, e <strong>remover a isenção</strong> num PR depois que a versão completar 7 dias.</td></tr>
+  <tr><td><code>pyproject.toml</code> exige um mínimo mais novo que o corte</td><td>O <code>uv lock</code> <strong>falha</strong> (veja abaixo). Espere o prazo, ou não suba o mínimo.</td></tr>
+</table>
+</div>
+
+<h3>Por que só depois das 15:48 de hoje</h3>
+
+<p>Rodei o cooldown hoje de madrugada, e o uv respondeu:</p>
+
+<pre><code>Resolving despite existing lockfile due to addition of global exclude newer 2026-10-23T04:24:58Z
+error: No solution found when resolving dependencies
+  cause: Because fastapi&gt;0.161.1 was published after the exclude newer time and your project
+  depends on fastapi&gt;=0.162.0, we can conclude that your project's requirements are unsatisfiable.</code></pre>
+
+<p>O PR #24 do Dependabot subiu o mínimo para <code>fastapi&gt;=0.162.0</code>, e essa versão saiu em <strong>23/10 às 18:47 UTC</strong>. Até ela completar 7 dias (30/10, 15:47 em Brasília), não existe versão aceitável. Ou seja: o uv não rebaixa um mínimo, ele falha. É por isso que o <code>cooldown</code> vai também no <code>dependabot.yml</code>: para o bot não propor mínimos que o uv ainda não aceita.</p>
+
+<h3>E o <code>uv sync --locked</code> do Dockerfile?</h3>
+
+<p>O medo natural: se o corte "anda" a cada dia, o lock fica desatualizado sozinho e o build quebra. Testei adiantando o relógio do contêiner em 5 dias: o <code>uv lock --upgrade</code> passou a ver mais versões, mas o <code>uv lock --check</code> continuou passando. O lock guarda o <em>prazo</em> (<code>exclude-newer-span = "P7D"</code>), não a data. As versões travadas só mudam quando alguém roda <code>uv lock --upgrade</code>.</p>
+
+<h2>Mão na massa: o último PR da etapa 6</h2>
+
+<p>Branch <code>ci/cooldown</code>, criada a partir da <code>main</code> atualizada, <strong>depois das 15:48 de hoje</strong>. Dois arquivos.</p>
+
+<ol class="checklist" data-key="0007-cooldown">
+  <li><strong><code>pyproject.toml</code>:</strong> no <code>[tool.uv]</code>, acrescente o cooldown de 7 dias. A sintaxe está na <a href="../reference/dependencias-sca.html">referência</a>.</li>
+  <li><strong>Gere o lock.</strong> Esta máquina Windows não tem o uv; rode pelo Docker, com a mesma versão do <code>Dockerfile</code>:
+    <pre><code>docker run --rm -v "${PWD}:/w" -w /w python:3.12-slim sh -c "pip install -q uv==0.13.1 &amp;&amp; uv lock"</code></pre>
+  </li>
+  <li><strong>Aposte e confira:</strong> o que o <code>git diff uv.lock</code> deve mostrar? Depois rode. Se aparecer o arquivo inteiro como alterado, é quebra de linha (o contêiner grava LF): me avise antes de commitar.</li>
+  <li><strong><code>.github/dependabot.yml</code>:</strong> no bloco <code>uv</code>, acrescente <code>cooldown</code> com <code>default-days: 7</code>. O <code>uv</code> é suportado; sem configuração, o padrão do Dependabot é 3 dias.<span class="source"> (<a href="https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference">referência</a>)</span> Atenção à indentação: <code>cooldown</code> fica no mesmo nível de <code>schedule</code>.</li>
+  <li><strong>Experimento:</strong> rode o mesmo contêiner com <code>uv lock --upgrade --dry-run</code> e encontre a <code>starlette</code>. Até 31/10 às 12:04, ela deve ir para a 1.9.0, não para a 1.10.0.</li>
+  <li><strong>PR e checks.</strong> O <code>imagem-api</code> verde prova que o uv do <code>Dockerfile</code> lê o cooldown (<code>uv sync --locked</code>). Depois do merge, o alerta <code>uv-missing-dependency-cooldown</code> deve fechar sozinho em <em>Security → Code scanning</em>. Esse é o "pronto quando" da etapa 6: o Semgrep sem avisos de cadeia de suprimentos.</li>
+</ol>
+
+<h2>Recupere da memória</h2>
+<p>Responda sem voltar ao texto. As duas últimas retomam a aula 0006.</p>
+
+<div class="quiz">
+  <div class="question" data-answer="1">
+    <p class="prompt">1. De que risco o cooldown protege?</p>
+    <div class="options">
+      <button>Acelerar o uv lock baixando menos pacotes novos</button>
+      <button>Recusar versões novas que ainda podem estar comprometidas</button>
+      <button>Impedir que o lock mude sem PR aprovado</button>
+    </div>
+    <p class="feedback" data-ok="Isso. A versão mais nova é a menos examinada; o prazo dá tempo de alguém descobrir e remover a envenenada." data-bad="Não. O cooldown trata de versões recém-publicadas que podem estar comprometidas, como as da ultralytics."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">2. Com o corte de 7 dias, por que a starlette foi para a 1.9.0?</p>
+    <div class="options">
+      <button>Porque a 1.10.0 tinha uma vulnerabilidade já conhecida</button>
+      <button>Porque o pyproject.toml fixa a starlette na 1.9</button>
+      <button>Porque a 1.10.0 tem menos de sete dias</button>
+    </div>
+    <p class="feedback" data-ok="Certo. O uv pulou a versão nova demais e pegou a mais recente que já tinha passado do prazo." data-bad="Não. A 1.10.0 saiu em 24/10; com o corte de 7 dias ela ainda é nova demais, e o uv pega a 1.9.0, de 18/10."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">3. O pyproject exige um mínimo mais novo que o corte. O que acontece?</p>
+    <div class="options">
+      <button>O uv lock falha sem achar uma solução</button>
+      <button>O uv rebaixa o pacote para a anterior</button>
+      <button>O uv ignora o corte só para aquele pacote</button>
+    </div>
+    <p class="feedback" data-ok="Isso. Foi o que aconteceu com a fastapi 0.162.0 de madrugada: unsatisfiable." data-bad="Não. Rebaixar abaixo do mínimo violaria o pyproject; o uv falha com 'requirements are unsatisfiable'."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">4. Uma correção de segurança saiu ontem. Quem espera os 7 dias?</p>
+    <div class="options">
+      <button>Nenhum dos dois espera por uma correção</button>
+      <button>Só o uv; o Dependabot não espera</button>
+      <button>Só o Dependabot; o uv não espera</button>
+    </div>
+    <p class="feedback" data-ok="Certo. O cooldown do Dependabot é só para atualizações de versão; o exclude-newer do uv não distingue." data-bad="Não. O Dependabot deixa atualização de segurança passar direto; o uv aplica o corte a tudo, por isso existe o exclude-newer-package."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">5. De onde vêm os 44 HIGH da imagem do api?</p>
+    <div class="options">
+      <button>Das dependências Python listadas no arquivo uv.lock</button>
+      <button>Do código da aplicação, apontado pelo Semgrep também</button>
+      <button>Da imagem base python 3.12-slim, ainda sem correção</button>
+    </div>
+    <p class="feedback" data-ok="Isso. A python:3.12-slim pura tem exatamente os mesmos 44 HIGH." data-bad="Não. A python:3.12-slim sozinha tem os mesmos 44 HIGH: vêm todos da base."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">6. Por que o semgrep também barrou o PR #35?</p>
+    <div class="options">
+      <button>Leu no Dockerfile um CMD sem USER antes</button>
+      <button>Rodou a imagem construída e viu o uid zero</button>
+      <button>Achou um CRITICAL novo na imagem do api</button>
+    </div>
+    <p class="feedback" data-ok="Certo. A regra missing-user lê o texto; o id -u olha a imagem. Duas camadas, defesa em profundidade." data-bad="Não. O Semgrep não constrói nem roda a imagem: ele leu o Dockerfile e achou o CMD sem USER (regra missing-user)."></p>
+  </div>
+</div>
+
+<footer class="lesson">
+  <p><strong>Fonte principal:</strong> as <a href="https://docs.astral.sh/uv/reference/settings/#exclude-newer">configurações do uv (<code>exclude-newer</code>)</a> e a <a href="https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference">referência de opções do Dependabot (<code>cooldown</code>)</a>. Para o porquê, a <a href="https://blog.pypi.org/posts/2024-12-11-ultralytics-attack-analysis/">análise do PyPI sobre a ultralytics</a>.</p>
+  <p><strong>Referência rápida:</strong> <a href="../reference/dependencias-sca.html">Dependências e SCA</a> · <a href="../reference/glossario.html">Glossário</a> · aula anterior: <a href="0005-cadeia-de-suprimentos.html">0005</a>.</p>
+  <p>O <code>uv lock</code> falhou, o diff veio estranho ou o alerta não fechou? Pergunte ao Claude no terminal. Ele é o seu professor nesta trilha.</p>
+</footer>
+
+</main>
+<script src="../assets/checklist.js"></script>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

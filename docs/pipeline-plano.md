@@ -1,6 +1,6 @@
 # EduRAG — Plano de implementação da pipeline (F2 → deploy na AWS)
 
-> Atualizado em 23/10/2026. Referências: [spec.md](spec.md) e [progresso.md](progresso.md).
+> Atualizado em 30/10/2026. Referências: [spec.md](spec.md) e [progresso.md](progresso.md).
 > Regra da Camada B: **você escreve os workflows**; a IA explica e revisa.
 
 ## Visão geral
@@ -90,7 +90,7 @@ Para cada ferramenta: primeiro rodar em modo de relatório, corrigir o que apare
 
 ### Etapa 6 — Dependências
 
-**Em andamento: parte 1 concluída; da parte 2 falta só o cooldown do uv (a partir de 30/10).** Aulas: [0004](estudo/lessons/0004-vulnerabilidades-com-trivy.html) (portão de vulnerabilidades) e [0005](estudo/lessons/0005-cadeia-de-suprimentos.html) (cadeia de suprimentos).
+**Em andamento: parte 1 concluída; da parte 2 falta só o cooldown do uv (a partir de 30/10, 15:48).** Aulas: [0004](estudo/lessons/0004-vulnerabilidades-com-trivy.html) (portão de vulnerabilidades), [0005](estudo/lessons/0005-cadeia-de-suprimentos.html) (cadeia de suprimentos) e [0007](estudo/lessons/0007-cooldown-na-pratica.html) (cooldown na prática).
 
 *Parte 1: portão de vulnerabilidades (aula 0004)*
 - [x] Corrigir o CRITICAL que o Trivy já achava (`certifi 2026.7.22` → `2026.10.19`): [PR #12](https://github.com/rafelms/EduRAG/pull/12).
@@ -101,7 +101,7 @@ Para cada ferramenta: primeiro rodar em modo de relatório, corrigir o que apare
 
 *Parte 2: cadeia de suprimentos (aula 0005)*
 - [x] Fixar por SHA todas as actions de `ci.yml` e `security.yml` (o Semgrep acusava 12 usos por tag), com o comentário `# vX.Y.Z`: [PR #17](https://github.com/rafelms/EduRAG/pull/17).
-- [ ] Cooldown no uv (`exclude-newer`) e uv novo no `Dockerfile` (o `uv:0.5` não lê a duração relativa). Decidir o que fazer com o `certifi`, que o cooldown rebaixaria. **Só a partir de 30/10:** o PR #24 subiu o mínimo do `fastapi` para a 0.162.0 (23/10), e com o cooldown ativo antes disso o `uv lock` falha. Junto, `cooldown` com `default-days: 7` no bloco `uv` do `dependabot.yml`, para o Dependabot não propor mínimos que o uv ainda não aceita.
+- [ ] Cooldown no uv (`exclude-newer = "7 days"`) e, junto, `cooldown` com `default-days: 7` no bloco `uv` do `dependabot.yml`, para o Dependabot não propor mínimos que o uv ainda não aceita. O uv novo no `Dockerfile` já entrou no PR #29. **Só a partir de 30/10, 15:48 (Brasília):** a `fastapi 0.162.0`, mínimo exigido desde o PR #24, foi publicada em 23/10 às 18:47 UTC; antes disso o `uv lock` falha. Testado em 30/10 (uv 0.13.1): depois desse horário, o lock não rebaixa nada (o `certifi 2026.10.23` já passou dos 7 dias) e só ganha o bloco `[options]`.
 - [x] `.github/dependabot.yml` para Python (`uv`), npm, Docker e GitHub Actions (é arquivo de configuração, não job): [PR #18](https://github.com/rafelms/EduRAG/pull/18). Primeira rodada em 27/10/2026: 8 PRs (#19 a #26), todos com merge em 28/10; o primeiro foi o [PR #25](https://github.com/rafelms/EduRAG/pull/25). O *Insights → Dependency graph → Dependabot* leu os 4 blocos sem erro. O #20 e o #23 levaram o frontend para a Node 26 e a CI foi alinhada no [PR #27](https://github.com/rafelms/EduRAG/pull/27).
 
 *Pronto quando:* o Semgrep não acusa mais cadeia de suprimentos e o Dependabot abriu o primeiro PR.
@@ -109,11 +109,16 @@ Para cada ferramenta: primeiro rodar em modo de relatório, corrigir o que apare
 
 ### Etapa 7 — Build e scan das imagens
 
-**Dependia de dois itens da etapa 6, ambos feitos:** actions por SHA (PR #17) e uv novo no `Dockerfile` ([PR #29](https://github.com/rafelms/EduRAG/pull/29): `uv:0.13.1` por digest e `uv sync --locked`). O cooldown que falta da etapa 6 não toca em nenhum arquivo desta etapa, e as duas andam em paralelo. Aula: [0006](estudo/lessons/0006-build-e-scan-de-imagens.html). Situação medida em 28/10/2026 (Trivy 0.76.1): `api` e `front` com 0 CRITICAL; as duas já rodam sem root (uid 10001 e 101); `api` com 44 HIGH sem correção e `front` com 3 HIGH com correção (eram 44 em 23/10, antes da base 1.31).
+Aula: [0006](estudo/lessons/0006-build-e-scan-de-imagens.html). Situação medida em 28/10/2026 (Trivy 0.76.1): `api` e `front` com 0 CRITICAL; as duas já rodam sem root (uid 10001 e 101); `api` com 44 HIGH sem correção e `front` com 3 HIGH com correção (eram 44 em 23/10, antes da base 1.31).
 
-- [ ] **PR 1 (`ci/imagem-api`):** novo `.github/workflows/build.yml` com o job `imagem-api`: checkout → Buildx → build (`push: false`, `load: true`, cache `type=gha` com `scope` próprio) → `trivy image` falhando em CRITICAL → checagem de não-root (`id -u` diferente de `0`). Actions fixadas por SHA desde o início.
-- [ ] **PR 2 (`ci/imagem-front`):** job `imagem-front` (contexto `frontend/`, Nginx servindo o build do React), e os dois jobs como checks obrigatórios do `protege-main`.
-- [ ] **PR 3 (provas):** `frontend/Dockerfile` com `nginx-unprivileged:1.21-alpine` (9 CRITICAL, constrói e sobe) → `imagem-front` falha no Trivy; `USER edurag` comentado no `Dockerfile` → `imagem-api` falha na checagem de não-root. Cada prova num PR descartável, fechado sem merge.
+**Concluída em 30/10/2026.** Registro: [0008](estudo/learning-records/0008-imagens-com-portao-provado.md).
+
+- [x] **PR 1 (`ci/imagem-api`):** novo `.github/workflows/build.yml` com o job `imagem-api`: checkout → Buildx → build (`push: false`, `load: true`, cache `type=gha` com `scope` próprio) → `trivy image` falhando em CRITICAL → checagem de não-root (`id -u` diferente de `0`). Actions fixadas por SHA desde o início: [PR #32](https://github.com/rafelms/EduRAG/pull/32) (e [PR #33](https://github.com/rafelms/EduRAG/pull/33), que desliga o build record).
+- [x] **PR 2 (`ci/imagem-front`):** job `imagem-front` (contexto `frontend/`, Nginx servindo o build do React), e os dois jobs como checks obrigatórios do `protege-main`: [PR #34](https://github.com/rafelms/EduRAG/pull/34). O portão achou um CRITICAL real na base 1.31 (CVE-2026-111497, `brotli-libs`), corrigido no mesmo PR com `apk upgrade`.
+- [x] **PR 3 (provas):** `frontend/Dockerfile` com `nginx-unprivileged:1.21-alpine` (9 CRITICAL, constrói e sobe) → `imagem-front` falha no Trivy; `USER edurag` comentado no `Dockerfile` → `imagem-api` falha na checagem de não-root. Cada prova num PR descartável, fechado sem merge.
+
+**Provado em 30/10/2026:** [PR #35](https://github.com/rafelms/EduRAG/pull/35): `imagem-api` falhou na checagem de não-root (`uid: 0`), e o `semgrep` também barrou com `dockerfile.security.missing-user`. [PR #36](https://github.com/rafelms/EduRAG/pull/36): `imagem-front` falhou no Trivy (Alpine 3.15.4, 9 CRITICAL). Os dois ficaram bloqueados e foram fechados sem merge.
+*Estudo slim × completa (30/10):* `python:3.12` tem 1,62 GB, 454 HIGH e 16 CRITICAL; `python:3.12-slim` tem 180 MB, 44 HIGH e 0 CRITICAL. Os 44 HIGH do `api` são todos da base.
 
 *Pronto quando:* as imagens só existem se passaram no scan (a publicação fica para a etapa 8, que reaproveita este build e o cache).
 *Para estudar:* camadas de imagem, por que imagem base slim reduz vulnerabilidades.

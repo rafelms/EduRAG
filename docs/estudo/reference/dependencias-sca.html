@@ -65,8 +65,16 @@ exclude-newer-package = { certifi = false }   # isenta um pacote</code></pre>
 <ul>
   <li>Exige uv recente: o <code>uv:0.5</code> do Dockerfile falha ao ler (<code>failed to parse year in date "7 days"</code>).</li>
   <li>Pode <strong>rebaixar</strong> uma correção de segurança recém-publicada (testado com o <code>certifi</code>).</li>
-  <li>O <code>uv.lock</code> ganha <code>exclude-newer-span = "P7D"</code>.</li>
+  <li>Mínimo do <code>pyproject.toml</code> mais novo que o corte: o <code>uv lock</code> <strong>falha</strong> (<code>unsatisfiable</code>), não rebaixa.</li>
+  <li>O <code>uv.lock</code> ganha um bloco <code>[options]</code> com <code>exclude-newer-span = "P7D"</code>. Guarda o prazo, não a data: o <code>uv lock --check</code> e o <code>uv sync --locked</code> não quebram com o passar dos dias (testado com o relógio +5 dias).</li>
 </ul>
+<pre><code># sem uv instalado (Windows): o mesmo uv do Dockerfile
+docker run --rm -v "${PWD}:/w" -w /w python:3.12-slim sh -c "pip install -q uv==0.13.1 &amp;&amp; uv lock"
+# o que o cooldown seguraria
+... uv lock --upgrade --dry-run</code></pre>
+<pre><code># dependabot.yml, bloco uv (mesmo nível de schedule)
+    cooldown:
+      default-days: 7      # padrão sem config: 3; não vale para segurança</code></pre>
 
 <h2>dependabot.yml</h2>
 <div class="table-wrap">

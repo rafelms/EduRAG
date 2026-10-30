@@ -48,6 +48,10 @@
   Campos do `dependabot.yml`, valores de `package-ecosystem`, `cooldown`, `groups`. Usar para: PR 5 da etapa 6.
 - [uv: Settings, `exclude-newer`](https://docs.astral.sh/uv/reference/settings/#exclude-newer)
   Corte por data ou duração relativa (`"7 days"`) e `exclude-newer-package`. Usar para: cooldown do uv.
+- [PyPI: análise do ataque à `ultralytics`](https://blog.pypi.org/posts/2024-12-11-ultralytics-attack-analysis/)
+  Quatro versões maliciosas publicadas pela pipeline do próprio projeto, comprometida via cache do GitHub Actions, depois removidas. Não diz quanto tempo ficaram no ar. Usar para: o porquê do cooldown (aula 0007).
+- [OSV](https://osv.dev)
+  Banco aberto de vulnerabilidades com API (`POST /v1/query`). Usar para: conferir se uma versão que o cooldown segura é correção de segurança.
 
 - [README da build-push-action](https://github.com/docker/build-push-action)
   Entradas `context`, `file`, `push`, `load`, `tags`, `cache-from`, `cache-to`. `load` é atalho para `--output=type=docker`. Usar para: etapa 7.
