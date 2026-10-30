@@ -63,6 +63,28 @@ docker run --rm --entrypoint id edurag-api:teste -u</code></pre>
 <p>Em 23/10, com a base 1.29 (Alpine 3.23.4), o <code>front</code> tinha 44 HIGH com correção; a troca de base pelo Dependabot (PR #19) levou para 3. O <code>api</code> não mudou.</p>
 <p><strong>Para as provas:</strong> <code>nginx-unprivileged:1.21-alpine</code> (Alpine 3.15.4, fim de suporte) dá 9 CRITICAL com correção e ainda constrói; remover o <code>USER</code> do <code>Dockerfile</code> da API faz o <code>id -u</code> devolver <code>0</code>. A base <code>python:3.9</code> tem CRITICAL, mas não serve de prova: o <code>uv sync</code> exige Python 3.12 e o build quebra antes do scan.</p>
 
+<h2>Provado em 30/10/2026</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>PR</th><th>Mudança</th><th>Quem caiu, e onde</th></tr>
+  <tr><td><a href="https://github.com/rafelms/EduRAG/pull/35">#35</a></td><td><code>USER edurag</code> comentado</td><td><code>imagem-api</code> na checagem de não-root (<code>uid: 0</code>) e <code>semgrep</code> com <code>dockerfile.security.missing-user</code></td></tr>
+  <tr><td><a href="https://github.com/rafelms/EduRAG/pull/36">#36</a></td><td>Base <code>nginx-unprivileged:1.21-alpine</code></td><td><code>imagem-front</code> no Trivy (Alpine 3.15.4, 9 CRITICAL)</td></tr>
+</table>
+</div>
+<p><strong>Dois portões para o root:</strong> o Semgrep lê o texto do Dockerfile (rápido, sem build); o <code>id -u</code> olha a imagem pronta (pega também base que roda como root sem nada escrito).</p>
+
+<h2>Slim × completa (30/10/2026, sem <code>--ignore-unfixed</code>)</h2>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th><code>python:3.12</code></th><th><code>python:3.12-slim</code></th></tr>
+  <tr><td>Disco</td><td>1,62 GB</td><td>180 MB</td></tr>
+  <tr><td>Pacotes do Debian</td><td>469</td><td>87</td></tr>
+  <tr><td>HIGH</td><td>454</td><td>44</td></tr>
+  <tr><td>CRITICAL</td><td>16</td><td>0</td></tr>
+</table>
+</div>
+<p>~9× maior, ~10,7× mais achados: o que pesa são as bibliotecas em C. Os 44 HIGH da slim são os 44 do <code>api</code>, então todos vêm da base.</p>
+
 <h2>Multi-stage</h2>
 <p>Só o <strong>último</strong> <code>FROM</code> vira a imagem entregue. O estágio <code>builder</code> (Node, <code>npm</code>, <code>uv</code>) só entrega arquivos por <code>COPY --from=builder</code> e não aparece no scan.</p>
 

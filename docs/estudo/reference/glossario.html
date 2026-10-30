@@ -40,6 +40,9 @@
   <dt>Cooldown</dt>
   <dd>Uma espera mínima, em dias, antes de aceitar uma versão recém-publicada. No uv é o <code>exclude-newer</code>; no Dependabot, a opção <code>cooldown</code>, que só vale para atualizações de versão. <span class="seen">Aula <a href="../lessons/0005-cadeia-de-suprimentos.html">0005</a></span></dd>
 
+  <dt>Defesa em profundidade</dt>
+  <dd>Mais de uma camada contra o mesmo risco, para que a falha de uma não deixe passar. Ex.: o Semgrep (<code>missing-user</code>) e o <code>id -u</code> barrando a imagem que roda como root. <span class="seen">Aula <a href="../lessons/0006-build-e-scan-de-imagens.html">0006</a></span></dd>
+
   <dt>DAST</dt>
   <dd><em>Dynamic Application Security Testing</em>: testa a aplicação rodando, de fora, como um atacante faria. <span class="seen">Aula <a href="../lessons/0003-sast-com-semgrep.html">0003</a></span></dd>
 
@@ -96,6 +99,9 @@
 
   <dt>Severidade</dt>
   <dd>O peso que uma regra dá ao achado (no Semgrep: INFO, WARNING, ERROR). Um portão pode barrar só a partir de uma severidade. <span class="seen">Aula <a href="../lessons/0003-sast-com-semgrep.html">0003</a></span></dd>
+
+  <dt>Superfície de ataque</dt>
+  <dd>Tudo o que um atacante pode tentar explorar: cada pacote, porta e binário a mais. A imagem slim tem menos superfície que a completa. <span class="seen">Aula <a href="../lessons/0006-build-e-scan-de-imagens.html">0006</a></span></dd>
 
   <dt>SQL injection</dt>
   <dd>Quando um valor vindo de fora é colado no texto da consulta e passa a ser interpretado como SQL. A defesa é passar o valor como parâmetro, separado do comando (CWE-89). <span class="seen">Aula <a href="../lessons/0003-sast-com-semgrep.html">0003</a></span></dd>
