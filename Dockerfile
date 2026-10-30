@@ -16,7 +16,7 @@ COPY --from=builder /app/.venv /app/.venv
 COPY alembic.ini ./
 COPY app ./app
 ENV PATH="/app/.venv/bin:$PATH" PYTHONUNBUFFERED=1
-USER edurag
+#USER edurag
 EXPOSE 8000
 # Aplica as migrations e sobe a API.
 CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
