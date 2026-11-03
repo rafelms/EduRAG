@@ -8,6 +8,8 @@ updates:
     groups:
       python-menores:
         update-types: [minor, patch]
+    cooldown:
+      default-days: 7
 
   # Frontend React
   - package-ecosystem: npm
