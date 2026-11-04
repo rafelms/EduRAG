@@ -27,6 +27,9 @@ dev = [
 [tool.uv]
 package = false
 exclude-newer = "7 days"
+# Isenção temporária: pypdf 6.21.4 (fix de CVE-2026-119203..119209) e o mínimo
+# python-multipart>=0.0.33 têm menos de 7 dias. Remover depois de 07/11/2026 11:23 (BRT).
+exclude-newer-package = { pypdf = false, python-multipart = false }
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
