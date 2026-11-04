@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Publicação no GHCR</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Referência · da aula <a href="../lessons/0008-publicar-no-ghcr.html">0008</a></p>
+  <h1>Publicação no GHCR</h1>
+</header>
+
+<h2>Job de publicação: o que conferir</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Item</th><th>Valor</th><th>Por quê</th></tr>
+  <tr><td>Id do job</td><td><code>publica-api</code> / <code>publica-front</code></td><td><strong>Não</strong> vira check obrigatório: é pulado em PR</td></tr>
+  <tr><td><code>needs</code></td><td>O portão da mesma imagem</td><td>Só publica o que passou</td></tr>
+  <tr><td><code>if</code></td><td><code>github.event_name</code> é <code>push</code> e <code>github.ref</code> é <code>refs/heads/main</code></td><td>Só a <code>main</code> publica</td></tr>
+  <tr><td>Permissões</td><td><code>contents: read</code>, <code>packages: write</code></td><td>Escrita só onde é usada</td></tr>
+  <tr><td>Login</td><td><code>docker/login-action</code> (por SHA), <code>ghcr.io</code>, <code>github.actor</code>, <code>secrets.GITHUB_TOKEN</code></td><td>Sem segredo novo</td></tr>
+  <tr><td>Build</td><td><code>push: true</code>, <code>cache-from</code> com o <code>scope</code> do portão</td><td>Camadas vêm do cache: confira <code>CACHED</code> no log</td></tr>
+  <tr><td>Tags</td><td><code>ghcr.io/rafelms/edurag-api:${{ github.sha }}</code> e <code>:latest</code></td><td>Nome em minúsculas; não use <code>github.repository</code></td></tr>
+</table>
+</div>
+
+<h2>SHA × latest</h2>
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>Tag por SHA</th><th><code>latest</code></th></tr>
+  <tr><td>Aponta para</td><td>Um commit, para sempre</td><td>O último merge</td></tr>
+  <tr><td>Rollback</td><td>Use o SHA do commit anterior</td><td>Impossível: a anterior ficou sem nome</td></tr>
+  <tr><td>Uso</td><td>Deploy (etapa 11)</td><td>Só apelido humano</td></tr>
+</table>
+</div>
+
+<h2>Conferir uma imagem publicada</h2>
+<pre><code>git log -1 --format=%H                                   # SHA da main
+docker pull ghcr.io/rafelms/edurag-api:&lt;sha&gt;
+docker run --rm --entrypoint id ghcr.io/rafelms/edurag-api:&lt;sha&gt; -u   # 10001</code></pre>
+<ul>
+  <li>Pacote novo nasce <strong>privado</strong> e fica vinculado ao repositório quando publicado por workflow.</li>
+  <li>Para baixar sem login: <em>Package settings → Change visibility</em>.</li>
+</ul>
+
+<p><a href="glossario.html">Glossário</a> · <a href="imagens-docker-trivy.html">Imagens, Docker e Trivy</a> · <a href="dependencias-sca.html">Dependências e SCA</a></p>
+
+</main>
+</body>
+</html>

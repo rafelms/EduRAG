@@ -62,6 +62,11 @@
 - [Trivy: Container Image](https://trivy.dev/latest/docs/target/container_image/)
   `trivy image`: pacotes do SO e de linguagem, imagem local antes do registro, `--input` para `docker save`. Usar para: etapa 7.
 
+- [GitHub: Publishing Docker images](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images)
+  Exemplo oficial para o GHCR: `packages: write`, `docker/login-action` com `github.actor` e `GITHUB_TOKEN`, `metadata-action`, `attest`. Usar para: etapa 8.
+- [GitHub: Working with the Container registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
+  Pacote nasce privado; vínculo automático com o repositório quando publicado por workflow; `GITHUB_TOKEN` × token pessoal. Usar para: etapa 8.
+
 ## Sabedoria (comunidades)
 
 - [GitHub Community: discussões de Actions](https://github.com/orgs/community/discussions/categories/actions)
@@ -80,4 +85,6 @@
 - Se `v0.76.1` do Trivy é segura: não achei aviso contra, mas a Aqua só nomeia como seguras a `0.69.2` e a `0.69.3` (para o incidente de março). Observado: a imagem oficial `0.76.1` rodou limpa.
 - O nome exato do check obrigatório de um job com *matrix* (a aula 0006 manda ele conferir na lista do ruleset, não testei). A documentação do Docker que li também não define `mode=min` e `mode=max` do cache `gha`.
 - Se o limite de 10 GB do cache do GitHub afeta o EduRAG: a página do Docker que li não menciona o limite.
+- Se um job pulado por `if` conta como sucesso num check obrigatório: não conferi. A aula 0008 evita a dúvida mantendo os `publica-*` fora do ruleset.
+- A página do Container registry diz que imagens públicas podem ser baixadas anonimamente, mas também que é preciso token para "instalar" pacotes públicos. Testar o `docker pull` sem login na etapa 8.
 - [GitHub Status](https://www.githubstatus.com): primeiro lugar a olhar quando os checks ficam presos em *Queued* sem log (foi um incidente do Actions no PR #6).

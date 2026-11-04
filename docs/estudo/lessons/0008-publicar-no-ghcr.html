@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Publicar no GHCR</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Aula 0008 · Etapa 8 do <a href="../../pipeline-plano.md">pipeline-plano</a> · ~60 min</p>
+  <h1>Publicar no GHCR</h1>
+  <p class="subtitle">Só a <code>main</code> publica, só depois dos portões, e cada imagem leva o SHA do commit que a gerou.</p>
+</header>
+
+<div class="note">
+  <p><strong>Antes de começar (03/11):</strong> o <code>trivy-fs</code> está vermelho em <em>qualquer</em> PR até a <code>pypdf 6.21.4</code> entrar pelo PR #38 (04/11, depois das 14:00). Você pode escrever, abrir e revisar o PR desta etapa agora; o merge espera o #38. Crie a branch a partir da <code>main</code>, não da <code>ci/cooldown</code>.</p>
+</div>
+
+<h2>O que esta etapa faz</h2>
+
+<p>Até aqui, a imagem era construída, escaneada e <strong>jogada fora</strong> no fim do job (<code>push: false</code>). A etapa 8 guarda a imagem num <strong>registro</strong>: o GHCR (<code>ghcr.io</code>), o registro de contêineres do GitHub. É de lá que um servidor vai baixar a imagem para rodar. Na etapa 11, o mesmo papel passa para o ECR da AWS.</p>
+
+<p>O "pronto quando" do plano: <strong>cada merge na <code>main</code> gera uma imagem rastreável até o commit.</strong> Rastreável quer dizer que, olhando a tag da imagem, você sabe exatamente qual código está dentro dela.</p>
+
+<h2>Aquecimento: de memória</h2>
+<p>Sem abrir o <code>build.yml</code>: quais são os cinco steps do job <code>imagem-api</code>, em ordem? E por que o build usa <code>load: true</code>? Depois, confira.</p>
+
+<h2>Portão × publicação</h2>
+
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>Portão (etapa 7)</th><th>Publicação (etapa 8)</th></tr>
+  <tr><td>Quando roda</td><td>Todo PR e todo push na <code>main</code></td><td><strong>Só</strong> push na <code>main</code></td></tr>
+  <tr><td>Saída do build</td><td><code>push: false</code>, <code>load: true</code></td><td><code>push: true</code></td></tr>
+  <tr><td>Permissões do token</td><td><code>contents: read</code></td><td><code>contents: read</code> + <code>packages: write</code></td></tr>
+  <tr><td>Credencial</td><td>Nenhuma</td><td>O <code>GITHUB_TOKEN</code>, sem segredo novo</td></tr>
+</table>
+</div>
+
+<p>O <code>GITHUB_TOKEN</code> é criado pelo GitHub a cada run e expira com ele. Para publicar no registro do próprio repositório, ele basta; a documentação recomenda trocar tokens pessoais por ele.<span class="source"> (<a href="https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry">GitHub: Container registry</a>)</span> O exemplo oficial dá ao job <code>packages: write</code> e faz o login com <code>username: github.actor</code> e <code>password: secrets.GITHUB_TOKEN</code>.<span class="source"> (<a href="https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images">GitHub: Publishing Docker images</a>)</span></p>
+
+<h2>Decisão 1: publicar no mesmo job ou num job separado?</h2>
+
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>Steps a mais no <code>imagem-api</code></th><th>Job novo <code>publica-api</code> com <code>needs</code></th></tr>
+  <tr><td>Permissão</td><td><code>packages: write</code> em <strong>todo PR</strong>, porque <code>permissions</code> não aceita <code>if</code></td><td><code>packages: write</code> só no job que roda na <code>main</code></td></tr>
+  <tr><td>Imagem publicada</td><td>Exatamente a escaneada</td><td>Reconstruída do cache <code>gha</code>: as camadas saem do cache, sem refazer nada</td></tr>
+  <tr><td>Ordem</td><td>Natural (mesmo job)</td><td><code>needs: imagem-api</code>: só roda se o portão passou</td></tr>
+</table>
+</div>
+
+<p><strong>Recomendo o job separado</strong>, por menor privilégio: o portão continua só lendo, e a permissão de escrita existe só onde é usada. O custo é a imagem publicada ser um segundo build. Por isso, há uma conferência no checklist: o log do build no <code>publica-api</code> deve mostrar <code>CACHED</code> em todos os passos. Se algum passo for refeito, a imagem publicada não é mais garantidamente a que o Trivy viu.</p>
+
+<p>E por que confiar que a <code>main</code> passou em <em>todos</em> os portões, e não só nos do <code>build.yml</code>? Porque nada entra na <code>main</code> sem os checks obrigatórios, e a regra <code>strict</code> exige o PR atualizado com a <code>main</code>. O commit do merge tem o mesmo código que foi testado.</p>
+
+<p><strong>Aposte:</strong> num PR, o que acontece com o job <code>publica-api</code>? Aparece vermelho, verde, ou de outro jeito? E ele deve entrar nos checks obrigatórios do <code>protege-main</code>?</p>
+
+<details>
+  <summary>Resposta</summary>
+  <p>Ele aparece como <strong>pulado</strong> (<em>skipped</em>), porque o <code>if</code> só é verdadeiro em push na <code>main</code>. E <strong>não</strong> entra no ruleset: um check que nunca roda em PR não prova nada sobre o PR.</p>
+</details>
+
+<h2>Decisão 2: as tags</h2>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Tag</th><th>Exemplo</th><th>Papel</th></tr>
+  <tr><td>SHA do commit</td><td><code>ghcr.io/rafelms/edurag-api:6448312…</code> (40 caracteres)</td><td>O endereço de verdade: um commit, uma imagem. É o que o deploy vai usar.</td></tr>
+  <tr><td><code>latest</code></td><td><code>ghcr.io/rafelms/edurag-api:latest</code></td><td>Só um apelido para "a mais recente". Muda a cada merge.</td></tr>
+</table>
+</div>
+
+<p>O SHA está no contexto <code>github.sha</code>.<span class="source"> (<a href="https://docs.github.com/en/actions/reference/workflows-and-actions/contexts">GitHub: Contexts</a>)</span> Várias tags vão na entrada <code>tags</code> da <code>build-push-action</code>, uma por linha (bloco <code>|</code> do YAML). O exemplo do GitHub usa a <code>docker/metadata-action</code> para gerar as tags. Aqui ela é dispensável: duas tags escritas à mão são <strong>uma action a menos</strong> para fixar por SHA e vigiar.</p>
+
+<div class="note">
+  <p><strong>Armadilha do nome:</strong> o nome de uma imagem só aceita letras minúsculas.<span class="source"> (<a href="https://docs.docker.com/reference/cli/docker/image/tag/">Docker: image tag</a>)</span> O <code>github.repository</code> vale <code>rafelms/EduRAG</code>, com maiúsculas, e quebraria o push. Escreva o nome por extenso (<code>ghcr.io/rafelms/edurag-api</code>).</p>
+</div>
+
+<p><strong>Para estudar (o plano pede):</strong> por que tag por SHA permite rollback e <code>latest</code> não? Pense na pergunta "qual imagem estava no ar antes do deploy quebrado?" e tente responder com cada uma das duas tags.</p>
+
+<details>
+  <summary>Resposta</summary>
+  <p>Com o SHA, a resposta é o commit anterior da <code>main</code>: <code>git log</code> mostra qual é, e a imagem com aquele nome continua no registro. Com <code>latest</code>, não há resposta: a tag já aponta para a imagem quebrada, e a anterior ficou sem nome. A etapa 11 depende disso: "se o smoke test falhar, voltar para a tag anterior".</p>
+</details>
+
+<h2>Mão na massa</h2>
+
+<p>Desta vez, <strong>sem esqueleto</strong>: na etapa 7 você escreveu os dois jobs certos de primeira. Se travar na estrutura, peça o esqueleto.</p>
+
+<ol class="checklist" data-key="0008-ghcr">
+  <li><strong>Branch:</strong> <code>git switch main; git pull; git switch -c ci/publica-ghcr</code>.</li>
+  <li><strong>Job <code>publica-api</code></strong> no <code>build.yml</code>, depois dos dois portões. <code>needs</code> aponta para o portão da mesma imagem. O <code>if</code> do job combina duas condições: o evento é <code>push</code> e a ref é a da <code>main</code>. Os nomes estão nos contextos <code>github.event_name</code> e <code>github.ref</code>; a ref da main é <code>refs/heads/main</code>.<span class="source"> (<a href="https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax">GitHub: Workflow syntax</a>)</span></li>
+  <li><strong>Permissões:</strong> <code>contents: read</code> e <code>packages: write</code>. Nada além disso.</li>
+  <li><strong>Steps:</strong> checkout, Buildx, login e build. O login é a <code>docker/login-action</code>, <strong>fixada por SHA</strong> (confirme a última versão no <code>git ls-remote</code>), com <code>registry: ghcr.io</code> e o usuário e a senha da seção acima.</li>
+  <li><strong>Build:</strong> mesmo <code>context</code>, <code>push: true</code>, as duas tags, e <code>cache-from</code> com o <strong>mesmo <code>scope</code></strong> do portão. Pense: precisa de <code>cache-to</code>? Quem já escreveu esse cache?</li>
+  <li><strong><code>publica-front</code>:</strong> copie e decida o que muda (mesmas pistas da aula 0006).</li>
+  <li><strong>Repare:</strong> as duas linhas <code>env</code> do PR #33 (<code>DOCKER_BUILD_RECORD_UPLOAD</code> e <code>DOCKER_BUILD_SUMMARY</code>) sumiram do <code>build.yml</code> no commit do #34. Decida se elas voltam, e em quais steps de build.</li>
+  <li><strong>Antes do push:</strong> me mostre o arquivo. Abra o PR: os dois <code>publica-*</code> devem aparecer como pulados. O <code>trivy-fs</code> estará vermelho até o #38 entrar; não é deste PR.</li>
+  <li><strong>Depois do #38:</strong> <em>Update branch</em> (o PR é seu), espere tudo verde e mescle.</li>
+  <li><strong>No run da <code>main</code>:</strong> os quatro jobs do Build rodam, os <code>publica-*</code> por último. No log do build de cada um, confira o <code>CACHED</code>. Em <em>github.com/rafelms → Packages</em>, as duas imagens devem aparecer com a tag igual ao <code>git log -1 --format=%H</code> da <code>main</code>.</li>
+</ol>
+
+<h2>Prove que a imagem publicada é a certa</h2>
+
+<p>O pacote nasce <strong>privado</strong>, e fica vinculado ao repositório automaticamente quando é publicado por um workflow.<span class="source"> (<a href="https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry">GitHub: Container registry</a>)</span> Para baixar sem login, torne os dois pacotes públicos: na página do pacote, <em>Package settings → Change visibility</em>. O repositório já é público, e o <code>.dockerignore</code> exclui o <code>.env</code>. Mesmo assim, a decisão é sua.</p>
+
+<pre><code>docker pull ghcr.io/rafelms/edurag-api:&lt;sha&gt;
+docker run --rm --entrypoint id ghcr.io/rafelms/edurag-api:&lt;sha&gt; -u</code></pre>
+
+<p>Esperado: <code>10001</code>. É a mesma checagem do portão, agora na imagem que saiu do registro. Para provar o "rastreável", veja o próximo merge (qualquer PR) gerar uma tag nova, com o <code>latest</code> mudando de imagem e a tag antiga continuando lá.</p>
+
+<h2>Recupere da memória</h2>
+<p>As duas últimas retomam as aulas 0007 e 0006.</p>
+
+<div class="quiz">
+  <div class="question" data-answer="2">
+    <p class="prompt">1. Por que publicar num job separado com needs?</p>
+    <div class="options">
+      <button>Porque o build fica mais rápido em outro job</button>
+      <button>Porque o GHCR recusa imagens vindas do mesmo job</button>
+      <button>Porque só o job da main recebe packages: write</button>
+    </div>
+    <p class="feedback" data-ok="Isso. Menor privilégio: o portão continua só lendo, e a escrita fica onde é usada." data-bad="Não. O motivo é o menor privilégio: permissions não aceita if, então steps no portão dariam packages: write a todo PR."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">2. Qual tag permite saber o código dentro da imagem?</p>
+    <div class="options">
+      <button>A tag com o SHA do commit da main</button>
+      <button>A tag latest, que aponta para a mais nova</button>
+      <button>A tag com a data e a hora do build</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Um SHA, um commit: git show mostra exatamente o que está na imagem." data-bad="Não. latest muda a cada merge e a data não aponta para código. Só o SHA liga a imagem a um commit."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">3. Por que não usar github.repository no nome da imagem?</p>
+    <div class="options">
+      <button>Porque ele inclui o nome da branch atual também</button>
+      <button>Porque ele tem maiúsculas, e o nome não aceita</button>
+      <button>Porque ele só existe em eventos de pull_request</button>
+    </div>
+    <p class="feedback" data-ok="Isso. rafelms/EduRAG tem maiúsculas; o nome da imagem só aceita minúsculas." data-bad="Não. O problema são as maiúsculas de EduRAG: nome de imagem só aceita minúsculas."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">4. Num PR, como aparece o job publica-api?</p>
+    <div class="options">
+      <button>Vermelho, porque o token do PR não pode escrever</button>
+      <button>Verde, porque publica uma imagem de teste no GHCR</button>
+      <button>Pulado, porque o if só vale no push da main</button>
+    </div>
+    <p class="feedback" data-ok="Certo. E por isso ele não entra nos checks obrigatórios." data-bad="Não. O if do job é falso em pull_request, então ele é pulado (skipped)."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">5. Por que a pypdf 6.21.4 não entrou no lock em 03/11?</p>
+    <div class="options">
+      <button>Porque saiu em 28/10 e ainda não tinha sete dias</button>
+      <button>Porque o Trivy bloqueou o download da nova versão</button>
+      <button>Porque o pyproject.toml fixa a pypdf na versão 6.21.2</button>
+    </div>
+    <p class="feedback" data-ok="Isso. O cooldown não distingue correção de novidade; a escolha foi esperar, sem isenção." data-bad="Não. O pyproject pede pypdf>=4.3 e o Trivy não baixa pacotes: foi o cooldown de 7 dias."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">6. O que o id -u na imagem baixada do GHCR prova?</p>
+    <div class="options">
+      <button>Que o Trivy não achou nenhum CRITICAL nela</button>
+      <button>Que a imagem publicada também roda sem root</button>
+      <button>Que o pacote do GHCR ficou público para todos</button>
+    </div>
+    <p class="feedback" data-ok="Certo. É a checagem do portão repetida na imagem que saiu do registro." data-bad="Não. O id -u mostra o uid de quem executa: 10001 quer dizer que a imagem publicada não roda como root."></p>
+  </div>
+</div>
+
+<footer class="lesson">
+  <p><strong>Fonte principal:</strong> o tutorial <a href="https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images">Publishing Docker images</a> do GitHub (permissões, login, push) e a página do <a href="https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry">Container registry</a> (visibilidade, vínculo com o repositório, <code>GITHUB_TOKEN</code>).</p>
+  <p><strong>Referência rápida:</strong> <a href="../reference/publicacao-ghcr.html">Publicação no GHCR</a> · <a href="../reference/imagens-docker-trivy.html">Imagens, Docker e Trivy</a> · <a href="../reference/glossario.html">Glossário</a>.</p>
+  <p>O push deu <code>denied</code>, o job não pulou no PR, o pacote não aparece ou o build não veio do cache? Pergunte ao Claude no terminal. Ele é o seu professor nesta trilha.</p>
+</footer>
+
+</main>
+<script src="../assets/checklist.js"></script>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
