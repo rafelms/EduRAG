@@ -129,6 +129,8 @@ Aula: [0006](estudo/lessons/0006-build-e-scan-de-imagens.html). Situação medid
 
 ### Etapa 8 — Publicar no GHCR
 
+Aula: [0008](estudo/lessons/0008-publicar-no-ghcr.html). Desenho: jobs `publica-api` e `publica-front` no `build.yml`, com `needs` no portão da mesma imagem, só em push na `main` e com `packages: write` só neles.
+
 - [ ] Só na `main` e só depois de todos os portões anteriores.
 - [ ] Login com o `GITHUB_TOKEN` (sem criar segredo novo).
 - [ ] Tag com o SHA do commit (e `latest` só como apelido).

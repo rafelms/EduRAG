@@ -76,6 +76,9 @@
   <dt>Scope (do cache do Buildx)</dt>
   <dd>O nome do cache de camadas no <code>type=gha</code>. Builds que dividem o mesmo scope sobrescrevem o cache um do outro; use um por imagem. <span class="seen">Aula <a href="../lessons/0006-build-e-scan-de-imagens.html">0006</a></span></dd>
 
+  <dt>Registro (registry)</dt>
+  <dd>O servidor que guarda imagens de contêiner para serem baixadas, como o GHCR (<code>ghcr.io</code>) e, mais tarde, o ECR da AWS. <span class="seen">Aula <a href="../lessons/0008-publicar-no-ghcr.html">0008</a></span></dd>
+
   <dt>Revogar</dt>
   <dd>Invalidar uma chave no serviço que a emitiu. É o primeiro passo diante de um segredo vazado. <span class="seen">Aula <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
 
@@ -99,6 +102,9 @@
 
   <dt>Severidade</dt>
   <dd>O peso que uma regra dá ao achado (no Semgrep: INFO, WARNING, ERROR). Um portão pode barrar só a partir de uma severidade. <span class="seen">Aula <a href="../lessons/0003-sast-com-semgrep.html">0003</a></span></dd>
+
+  <dt>Rollback</dt>
+  <dd>Voltar para a versão anterior quando um deploy quebra. Exige que a versão anterior tenha um nome fixo, como a tag por SHA. <span class="seen">Aula <a href="../lessons/0008-publicar-no-ghcr.html">0008</a></span></dd>
 
   <dt>Superfície de ataque</dt>
   <dd>Tudo o que um atacante pode tentar explorar: cada pacote, porta e binário a mais. A imagem slim tem menos superfície que a completa. <span class="seen">Aula <a href="../lessons/0006-build-e-scan-de-imagens.html">0006</a></span></dd>
