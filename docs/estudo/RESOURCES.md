@@ -68,7 +68,7 @@
   Pacote nasce privado; vínculo automático com o repositório quando publicado por workflow; `GITHUB_TOKEN` × token pessoal. Usar para: etapa 8.
 
 - [OWASP API Security Top 10 (2023)](https://api-security.owasp.org/editions/2023/en/0x11-t10/) e a [API4: Unrestricted Resource Consumption](https://api-security.owasp.org/editions/2023/en/0xa4-unrestricted-resource-consumption)
-  A lista de riscos de API e o porquê da etapa 9: serviço pago por requisição, rate limiting, teto em todo parâmetro de entrada, limites de gasto nos provedores. Usar para: modelo de ameaça (aula 0009) e cada controle das aulas 0010 a 0013.
+  A lista de riscos de API e o porquê da etapa 9: serviço pago por requisição, rate limiting, teto em todo parâmetro de entrada, limites de gasto nos provedores. Usar para: modelo de ameaça (aula 0009). Os controles de exposição pública (antigas aulas 0011 a 0013) saíram do caminho em 12/11/2026.
 - [Anthropic: Rate limits](https://platform.claude.com/docs/en/api/rate-limits)
   Teto de gastos por tier e o seu próprio, os erros ao estourar (`429 enforced_spend_limit_reached` × `400 invalid_request_error`), limites por workspace. Usar para: aulas 0009 e 0010.
 - [Anthropic: Workspaces](https://platform.claude.com/docs/en/manage-claude/workspaces)

@@ -15,17 +15,23 @@
   <p class="subtitle">O que precisa estar de pé antes de o EduRAG ter um link público.</p>
 </header>
 
+<div class="note">
+  <p><strong>12/11/2026:</strong> o prod do EduRAG é privado e temporário. Os controles marcados como "fora do caminho" só voltam se ele um dia for público; no lugar deles, a rede fica fechada (etapa 10).</p>
+</div>
+
 <h2>Ameaça → controle</h2>
 <div class="table-wrap">
 <table>
-  <tr><th>Ameaça</th><th>OWASP</th><th>Controle</th><th>Aula</th></tr>
-  <tr><td>Visitante gera chamadas pagas ao Claude</td><td>API2, API4</td><td>Autenticação em toda rota que gasta</td><td>0011</td></tr>
-  <tr><td>Script em rajada contra a API</td><td>API4</td><td><code>limit_req</code> por IP no nginx</td><td>0012</td></tr>
-  <tr><td>Usuário logado gasta sem parar</td><td>API4</td><td>Cota diária por usuário</td><td>0012</td></tr>
-  <tr><td>Cliente infla o contexto (<code>top_k</code>)</td><td>API4</td><td>Teto no servidor, para todo parâmetro de entrada</td><td>0012</td></tr>
-  <tr><td>Bug em qualquer camada acima</td><td>API4</td><td>Teto de gastos no workspace e na organização</td><td>0009</td></tr>
-  <tr><td>Chave do Claude no navegador</td><td>(segredo)</td><td>Só a API fala com o Claude; nada de <code>VITE_</code> com chave</td><td>0009</td></tr>
-  <tr><td>Outro site usa a API pelo navegador da vítima</td><td>API8</td><td>CORS fechado (mesma origem) e cabeçalhos de segurança</td><td>0013</td></tr>
+  <tr><th>Ameaça</th><th>OWASP</th><th>Controle</th><th>Onde</th></tr>
+  <tr><td>Visitante chega às rotas</td><td>API2, API4</td><td>Security group sem entrada; acesso pelo túnel do SSM</td><td>Etapa 10</td></tr>
+  <tr><td>Visitante gera chamadas pagas ao Claude (se público)</td><td>API2, API4</td><td>Autenticação em toda rota que gasta</td><td>Fora do caminho</td></tr>
+  <tr><td>Script em rajada contra a API (se público)</td><td>API4</td><td><code>limit_req</code> por IP no nginx</td><td>Fora do caminho</td></tr>
+  <tr><td>Usuário logado gasta sem parar (se público)</td><td>API4</td><td>Cota diária por usuário</td><td>Fora do caminho</td></tr>
+  <tr><td>Cliente infla o contexto (<code>top_k</code>)</td><td>API4</td><td>Teto no servidor (se público); no privado, painel de tokens</td><td>Etapa 13</td></tr>
+  <tr><td>Chave vazada, usada fora do EC2</td><td>API4</td><td>Teto de gastos no workspace e na organização</td><td>Aula 0009</td></tr>
+  <tr><td>Chave do Claude no navegador</td><td>(segredo)</td><td>Só a API fala com o Claude; nada de <code>VITE_</code> com chave</td><td>Aula 0009</td></tr>
+  <tr><td>Segredo no histórico do repositório</td><td>(segredo)</td><td>Auditoria com gitleaks, incluindo PRs fechados; revogar, não reescrever</td><td>Registro 0011</td></tr>
+  <tr><td>Outro site usa a API pelo navegador da vítima (se público)</td><td>API8</td><td>CORS fechado (mesma origem) e cabeçalhos de segurança</td><td>Fora do caminho</td></tr>
 </table>
 </div>
 <p class="source">OWASP API Security Top 10 (2023): <a href="https://api-security.owasp.org/editions/2023/en/0x11-t10/">lista</a> · <a href="https://api-security.owasp.org/editions/2023/en/0xa4-unrestricted-resource-consumption">API4</a>.</p>
@@ -61,7 +67,7 @@
   <tr><th>Onde</th><th>Regra</th></tr>
   <tr><td>Frontend</td><td>Tudo que é <code>VITE_*</code> vai para o JavaScript público. Nunca chave. <span class="source">(<a href="https://vite.dev/guide/env-and-mode">Vite</a>)</span></td></tr>
   <tr><td>Local</td><td><code>.env</code> (está no <code>.gitignore</code> e no <code>.dockerignore</code>)</td></tr>
-  <tr><td>Produção</td><td>SSM Parameter Store (etapa 11)</td></tr>
+  <tr><td>Produção</td><td>SSM Parameter Store (etapa 10), valor gravado à mão, fora do <em>state</em> do Terraform</td></tr>
   <tr><td>Portão</td><td>gitleaks: regras <code>anthropic-api-key</code> e <code>anthropic-admin-api-key</code> <span class="source">(<a href="https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml">gitleaks.toml</a>)</span></td></tr>
 </table>
 </div>
