@@ -1,21 +1,24 @@
-# EduRAG — Plano de implementação da pipeline (F2 → deploy na AWS)
+# EduRAG — Plano de implementação (pipeline → AWS com Terraform → observabilidade)
 
-> Atualizado em 12/11/2026. Referências: [spec.md](spec.md) e [progresso.md](progresso.md).
-> Regra da Camada B: **você escreve os workflows**; a IA explica e revisa.
+> Atualizado em 12/11/2026. Referências: [spec.md](spec.md), [progresso.md](progresso.md) e [MISSION.md](estudo/MISSION.md).
+> Regra da Camada B: **você escreve os workflows, o Terraform e o código**; a IA explica e revisa.
 
 ## Visão geral
 
-A pipeline é construída em portões: cada etapa só é adicionada depois que a anterior está verde, e **nada chega à AWS sem passar por testes e scans**. O link público só existe depois da F3 (autenticação e rate limit), porque a API passa a gastar créditos reais.
+A pipeline é construída em portões: cada etapa só é adicionada depois que a anterior está verde, e **nada chega à AWS sem passar por testes e scans**.
+
+**Escopo redefinido em 12/11/2026:** o objetivo da reta final é a experiência de deploy na AWS, a infraestrutura como código (Terraform) e a observabilidade (Prometheus + Grafana). O ambiente de produção é **privado e temporário**: só o Rafael acessa, e ele é destruído no fim da trilha. Por isso, a segurança de exposição pública (login, cota, CORS) saiu do caminho e deu lugar a rede fechada, segredos fora do repositório e teto de gastos.
 
 ```mermaid
 flowchart LR
     PR[Push / Pull Request] --> Q[Qualidade<br/>ruff, pytest, build do front]
-    Q --> S[Segurança no código<br/>gitleaks, Semgrep, deps]
+    Q --> S[Segurança no código<br/>gitleaks, Semgrep, deps, IaC]
     S --> B[Build das imagens<br/>api + front]
     B --> T[Trivy nas imagens<br/>falha em CRITICAL]
-    T -->|só na main| P[Publicar<br/>GHCR → ECR]
+    T -->|só na main| P[Publicar<br/>GHCR]
     P -->|só na main| D[Deploy no EC2<br/>via SSM]
     D --> SM[Smoke test<br/>/ready]
+    SM --> O[Prometheus + Grafana<br/>métricas e alertas]
 ```
 
 | Bloco | Etapas | Resultado |
@@ -23,8 +26,10 @@ flowchart LR
 | A — Integração contínua | 0 a 3 | Todo PR testado; `main` protegida |
 | B — Segurança na pipeline | 4 a 7 | Segredos, código, dependências e imagens verificados |
 | C — Publicação | 8 | Imagens versionadas num registro |
-| D — Pronto para ser público | 9 | Autenticação, rate limit e LLM na nuvem |
-| E — Entrega na AWS | 10 a 12 | Deploy automático e link no ar |
+| D — Pronto para a nuvem | 9 | Segredos auditados, teto de gastos e LLM na nuvem |
+| E — Infraestrutura e entrega na AWS | 10 e 11 | Infra em Terraform; deploy automático com rollback |
+| F — Observabilidade | 12 a 14 | Métricas, painéis e alertas versionados |
+| G — Encerramento | 15 | Evidências guardadas e `terraform destroy` |
 
 ---
 
@@ -145,58 +150,121 @@ Aula: [0008](estudo/lessons/0008-publicar-no-ghcr.html). Desenho: jobs `publica-
 
 ---
 
-## Bloco D — Pronto para ser público (F3 antecipada)
+## Bloco D — Pronto para a nuvem
 
-### Etapa 9 — Segurança da aplicação antes de expor
+### Etapa 9 — Segredos, teto de gastos e LLM na nuvem
 
-**Em andamento.** Plano de estudos e modelo de ameaça: aula [0009](estudo/lessons/0009-antes-de-expor.html); referência [Exposição segura](estudo/reference/exposicao-segura.html). Uma aula e um PR por item. Diferente das etapas anteriores, a prova de cada portão vira **teste na suíte**, e não PR descartável.
+**Em andamento.** Aula [0009](estudo/lessons/0009-antes-de-expor.html) (Console da Anthropic). Esta etapa foi **enxugada em 12/11/2026**: como o ambiente é privado, a proteção contra visitantes passa a ser a rede fechada da etapa 10, e não login no app. As antigas aulas 0011 a 0013 (autenticação, cota, CORS) saíram do caminho (ver [Fora do caminho](#fora-do-caminho)).
 
-- [ ] **Aula 0009, Console (sem PR):** workspace `edurag`, teto de gastos na organização e no workspace (o Default Workspace não aceita teto), alertas, chave `edurag-dev` criada no workspace e guardada fora do repositório. Vem primeiro porque é a única camada que não depende do código.
-- [ ] **Aula 0010, `feat/claude-llm`:** adaptador `ClaudeLLM` para a `LLMPort`, escolhido por `LLM_PROVIDER` (`ollama` local, `claude` na nuvem). O `/ready` deixa de exigir o Ollama para o LLM. Os erros de teto de gastos (`400`/`429` sem `retry-after`) são tratados como indisponibilidade, sem nova tentativa. Testes com cliente falso; a CI não usa chave real. Escolha do modelo com custo medido pelo `usage`.
-- [ ] **Decidir os embeddings na nuvem (até a 0010):** a Anthropic não tem modelo de embeddings. As opções são o Ollama só com o `nomic-embed-text` (sem migration; medir a RAM na etapa 10) ou a Voyage (vetor de 1024 contra o `Vector(768)` atual: migration, reindexação, segunda chave). Recomendação da aula 0009: Ollama.
-- [ ] **Aula 0011, `feat/autenticacao`:** autenticação no backend (Basic no nginx, API key por usuário ou login com JWT, decidido na aula); nenhuma chave no código do React (`VITE_*` é público). Prova: `/ask` sem credencial → `401`, e o LLM falso com 0 chamadas.
-- [ ] **Aula 0012, `feat/limites`:** `limit_req` por IP no nginx; cota diária por usuário (a tabela `questions` já registra cada pergunta); teto no `top_k` (hoje o cliente escolhe até 20, quase 4× o custo de `top_k=5`); upload máximo mantido. Prova: rajada → `429`; cota estourada → `429`.
-- [ ] **Aula 0013, `feat/cabecalhos`:** CORS fechado (o front e a API estão na mesma origem); cabeçalhos de segurança no Nginx. Prova: `curl -I` mostra os cabeçalhos; outra origem não recebe `Access-Control-Allow-Origin`.
+- [x] **Auditoria de segredos no histórico (12/11/2026).** Registro: [0011](estudo/learning-records/0011-auditoria-de-segredos.md).
+  - gitleaks v8.21.2 em `--all`, mais os *heads* dos 8 PRs fechados sem merge (#1, #3, #6, #9, #10, #14, #35, #36), que continuam públicos em `refs/pull/N/head`: 73 commits, **1 achado**, a chave AWS falsa do PR #6 (`config-falsa.env`, a prova da etapa 4).
+  - *Secret scanning* do GitHub: 0 alertas. O `.env` nunca foi commitado (`git log --all -- .env` vazio) e só tem variáveis de configuração e a senha local do Postgres.
+  - Busca manual (o gitleaks não pega senha genérica): só `edurag:edurag` no Postgres efêmero da CI (aceitável: o banco morre com o job) e o padrão `change-me` no `app/config.py`.
+- [ ] **`fix/config-sem-default`:** tirar o valor padrão de `database_url` em `app/config.py` (hoje `postgresql+psycopg://edurag:change-me@localhost…`). Sem padrão, a API falha ao subir sem `DATABASE_URL`, em vez de tentar uma senha conhecida. Conferir se os testes continuam passando.
+- [ ] **Aula 0009, Console (sem PR):** workspace `edurag`, teto de gastos na organização e no workspace, alertas, chave `edurag-dev` criada no workspace e guardada fora do repositório. Continua valendo: é o que limita o prejuízo se a chave vazar.
+- [ ] **Aula 0010, `feat/claude-llm`:** adaptador `ClaudeLLM` para a `LLMPort`, escolhido por `LLM_PROVIDER` (`ollama` local, `claude` na nuvem). O `/ready` deixa de exigir o Ollama para o LLM. Os erros de teto de gastos (`400`/`429` sem `retry-after`) são tratados como indisponibilidade, sem nova tentativa. Testes com cliente falso; a CI não usa chave real. Guardar o `usage` de cada resposta (tokens de entrada e saída): ele vira métrica na etapa 12.
+- [ ] **Decidir os embeddings na nuvem (até a 0010):** Ollama só com o `nomic-embed-text` (sem migration; medir a RAM na etapa 10) ou Voyage (vetor de 1024 contra o `Vector(768)` atual). Recomendação: Ollama.
 
-*Pronto quando:* um visitante sem login não consegue gerar nenhuma chamada ao LLM.
+*Pronto quando:* nenhum segredo real no histórico (feito), teto de gastos ativo e a API responde com o Claude na sua máquina.
 
 ---
 
-## Bloco E — Entrega na AWS
+## Bloco E — Infraestrutura e entrega na AWS
 
-### Etapa 10 — Base na AWS (feita uma vez, à mão e documentada)
+### Etapa 10 — Base na AWS com Terraform
 
-- [ ] Alerta de orçamento (AWS Budgets) no primeiro dia.
-- [ ] Usuário do dia a dia sem ser o root, com MFA.
-- [ ] Provedor **OIDC** do GitHub e uma *role* IAM com permissão mínima (ECR e SSM), sem access key guardada.
-- [ ] Repositórios no **ECR** para `api` e `front`. *Decidir antes:* os pacotes do GHCR já são públicos e o EC2 consegue puxá-los sem credencial; o ECR só se justifica se as imagens tiverem que ficar privadas ou dentro da AWS.
-- [ ] **EC2** com Docker, agente do **SSM** e *security group* abrindo só 80/443 (sem SSH aberto para a internet).
-- [ ] Postgres no EC2 via compose, com volume persistente e backup simples.
+Antes, a base seria feita à mão. Agora ela é **código**: tudo que for criado por `apply` some com `destroy` na etapa 15, sem recurso esquecido gerando cobrança.
 
-*Para estudar:* IAM, princípio do menor privilégio, OIDC × access keys.
+*Bootstrap (à mão, uma vez, documentado):*
+- [ ] Alerta de orçamento (AWS Budgets) **no primeiro dia**, antes de qualquer recurso. Depois ele entra no Terraform com um bloco `import`: é a primeira aula de `terraform import`.
+- [ ] Root com MFA e guardado; usuário do dia a dia (IAM Identity Center ou IAM) com MFA. Credencial local por `aws sso login` ou perfil, nunca access key no repositório.
+- [ ] Bucket S3 do *state* (versionado, criptografado, bloqueio de acesso público), com trava nativa do S3 (`use_lockfile = true`, sem DynamoDB).
+
+*Terraform (pasta `infra/`, PR `infra/base`):*
+- [ ] EC2 Amazon Linux 2023 (já vem com o agente do SSM) na VPC padrão, com *instance profile* `AmazonSSMManagedInstanceCore`. Tamanho de partida: `t3.medium` (Postgres, API, nginx, Ollama de embeddings, Prometheus e Grafana na mesma máquina); medir a RAM e ajustar. Disco gp3 e `user_data` instalando Docker e o plugin do compose.
+- [ ] **Security group sem nenhuma regra de entrada.** Acesso só pelo túnel do SSM (`AWS-StartPortForwardingSession`) para a interface (8080) e o Grafana (3000). *Decisão sua, a confirmar na aula:* túnel do SSM (recomendado, nenhuma porta aberta) ou entrada só do seu IP (`/32`).
+- [ ] Provedor **OIDC** do GitHub e uma *role* com permissão mínima: `ssm:SendCommand` só nessa instância e no documento `AWS-RunShellScript`, e leitura do resultado. Condição no `sub`: só a `main` do `rafelms/EduRAG`.
+- [ ] Parâmetros no **SSM Parameter Store** (`SecureString`) para a chave `edurag-prod` do Claude, a senha do Postgres e a senha do Grafana. **O valor é gravado à mão** (`aws ssm put-parameter`); o Terraform só dá à instância permissão de ler esses nomes. Valor de segredo em recurso do Terraform vai parar no *state*.
+- [ ] **Registro: GHCR, sem ECR.** Os pacotes já são públicos e o EC2 puxa sem credencial (registro [0010](estudo/learning-records/0010-publicacao-no-ghcr.md)). O ECR acrescentaria custo e uma permissão sem ganho para um ambiente temporário.
+- [ ] **Portão de IaC na CI:** `terraform fmt -check`, `terraform validate` (com `init -backend=false`, sem credencial) e `trivy config infra/` falhando em HIGH/CRITICAL, como check obrigatório. *Teste de bloqueio:* PR abrindo a porta 22 para `0.0.0.0/0` → pipeline falha.
+
+*Pronto quando:* `terraform apply` sobe a máquina do zero, você abre a interface pelo túnel do SSM e um `nmap` de fora não acha nenhuma porta aberta.
+*Para estudar:* *state* e por que ele é sensível, `plan` × `apply`, IAM e menor privilégio, OIDC × access keys, SSM Session Manager × SSH.
 
 ### Etapa 11 — Deploy contínuo
 
-- [ ] Na `main`, depois da etapa 8: autenticar via OIDC e enviar as imagens ao ECR.
-- [ ] Via SSM no EC2: `docker compose pull` + `up -d` com a tag do commit.
-- [ ] Segredos de produção (chave do Claude, senha do Postgres) vindos do SSM Parameter Store ou Secrets Manager, nunca do repositório.
+- [ ] `docker-compose.prod.yml`: imagens do GHCR pela tag do SHA (sem `build`), API sem porta publicada (só o `web` fala com ela pela rede interna), segredos lidos do Parameter Store no deploy, nunca de um `.env` versionado.
+- [ ] Job `deploy` no `build.yml`, só na `main` e com `needs` na publicação: autentica via OIDC e manda pelo SSM `docker compose pull` + `up -d` com a tag do commit.
 - [ ] Smoke test chamando `/ready`; se falhar, voltar para a tag anterior.
 
+*Teste de bloqueio:* PR que quebra o `/ready` de propósito → o deploy volta sozinho para a tag anterior.
 *Pronto quando:* um merge na `main` aparece no ar sozinho, e um deploy quebrado volta sozinho.
-
-### Etapa 12 — Domínio e HTTPS (opcional)
-
-- [ ] Domínio apontando para o EC2 (você já tem `rafaelmenezes.dev.br`; um subdomínio serve).
-- [ ] HTTPS com Let's Encrypt (Caddy ou Certbot no Nginx), ou CloudFront na frente.
+*Para estudar:* entrega contínua × deploy contínuo, *environments* com aprovação (pendência do registro 0004).
 
 ---
 
-## Depois da pipeline
+## Bloco F — Observabilidade (F4)
 
-- **F4 — Observabilidade:** métricas, painel de latência do LLM e alerta perto do `LLM_TIMEOUT_SECONDS`.
+Fecha o que a Camada A deixou pendente: o painel de latência do LLM e o alerta perto do `LLM_TIMEOUT_SECONDS` ([progresso.md](progresso.md)).
+
+### Etapa 12 — Métricas na API
+
+- [ ] **`feat/metricas`:** endpoint `/metrics` no formato do Prometheus (biblioteca `prometheus_client` ou `prometheus-fastapi-instrumentator`, decidido na aula). Além das métricas HTTP (requisições, latência, status por rota), as do domínio:
+  - histograma de latência do LLM e da busca vetorial;
+  - contador de perguntas por resultado (respondida, recusada pelo limiar, erro);
+  - contador de tokens de entrada e saída, vindo do `usage` da etapa 9 (é daí que sai o gasto estimado).
+- [ ] O `/metrics` fica só na rede interna: o nginx do `web` **não** repassa essa rota.
+- [ ] Teste na suíte: depois de um `/ask` com o LLM falso, o `/metrics` mostra o contador incrementado.
+
+*Pronto quando:* `curl localhost:8000/metrics` mostra as métricas do domínio e o teste está na CI.
+*Para estudar:* os 4 tipos de métrica (counter, gauge, histogram, summary), cardinalidade de *labels*, RED e USE.
+
+### Etapa 13 — Prometheus e Grafana no ar
+
+- [ ] **`feat/observabilidade`:** Prometheus, Grafana e node_exporter no compose (local e prod), com retenção curta (`--storage.tsdb.retention.time`) para caber no disco.
+- [ ] Grafana **provisionado como código** (pasta versionada com a fonte de dados e os painéis em JSON): subir do zero já mostra tudo, sem clique. Senha do admin vinda do Parameter Store, nunca o `admin/admin` padrão.
+- [ ] Painéis: taxa, erros e latência da API; latência do LLM (p50/p95 contra o timeout); tokens e gasto estimado por dia; CPU, RAM e disco do EC2.
+- [ ] Grafana e Prometheus sem porta pública: acesso pelo túnel do SSM, como a interface.
+
+*Pronto quando:* o painel do EC2 mostra perguntas reais e o gasto estimado bate (aproximadamente) com o Console da Anthropic.
+*Para estudar:* *pull* × *push*, PromQL (`rate`, `histogram_quantile`), *recording rules*.
+
+### Etapa 14 — Alertas
+
+- [ ] Regras de alerta versionadas: API fora do ar, taxa de erro alta, p95 do LLM perto do timeout, gasto estimado do dia acima de um limite seu.
+- [ ] Destino da notificação (e-mail, Telegram ou Discord: decidido na aula), pelo Alertmanager ou pelo alerting do Grafana.
+- [ ] **Portão na CI:** `promtool check rules` e `promtool test rules` com casos de teste das regras.
+
+*Teste de bloqueio:* `docker compose stop api` no EC2 → o alerta dispara e a notificação chega; `start` → ele se resolve.
+*Pronto quando:* você recebe o alerta de uma queda provocada e o PR com uma regra quebrada é barrado.
+
+---
+
+## Bloco G — Encerramento
+
+### Etapa 15 — Evidências e `terraform destroy`
+
+- [ ] Guardar antes de destruir: prints dos painéis, do alerta recebido, do deploy automático e do rollback, e os links dos PRs barrados.
+- [ ] `terraform destroy` e conferência: nenhuma instância, volume, IP público ou snapshot sobrando no Cost Explorer depois de uns dias.
+- [ ] Revogar a chave `edurag-prod` no Console da Anthropic, apagar os parâmetros do SSM e a *role* do OIDC (se ficou fora do Terraform), e por último o bucket do *state*.
+
+*Pronto quando:* a fatura do mês seguinte vem zerada e a evidência está no README.
+
+---
+
+## Fora do caminho
+
+Saíram em 12/11/2026, porque o ambiente é privado e temporário. Voltam se o projeto um dia ficar público:
+
+- Autenticação de usuários (Basic no nginx, API key ou JWT), cota diária por usuário, teto no `top_k`, `limit_req` no nginx, CORS e cabeçalhos de segurança. A análise de risco está na aula 0009 e na referência [Exposição segura](estudo/reference/exposicao-segura.html).
+- Domínio e HTTPS públicos.
+
+## Depois da trilha
+
 - **F5 — LLMOps:** Langfuse, Ragas na CI (vira mais um portão da pipeline), defesa contra prompt injection e experimento de `CHUNK_SIZE`.
 - **F6 — Kubernetes.**
+- Logs centralizados (Loki) e tracing (OpenTelemetry), a outra metade da F4.
 
 ## Comprovação para o currículo
 
-Guarde, a cada etapa, o print ou o link do PR que provou o portão: o PR com segredo falso barrado, o PR com dependência vulnerável barrado, o deploy automático e o rollback. Junto com o README, isso vira a evidência de "DevSecOps na prática".
+Guarde, a cada etapa, o print ou o link do PR que provou o portão: o PR com segredo falso barrado, o PR com dependência vulnerável barrado, o PR com porta aberta barrado pelo portão de IaC, o deploy automático, o rollback e o alerta recebido. Junto com o README, isso vira a evidência de "DevSecOps na prática".

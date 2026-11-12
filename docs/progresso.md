@@ -179,19 +179,21 @@ Itens movidos para a Camada B, onde viram trabalho medido em vez de ajuste avuls
 - [x] **Conferir o visual no navegador** (`http://localhost:8080`), em 19/10/2026.
 - [x] **Registrar na spec** como RF09 e T11 (19/10/2026).
 - [ ] **Testes automatizados do front**, para o RF09 cumprir a regra da seção 2 da spec (e a Etapa 2 do plano).
-- [ ] **Autenticação antes de expor na AWS** (básica no nginx como paliativo; F3 como solução).
-- [ ] **Fechar a porta 8000 da API** no ambiente da AWS e colocar HTTPS na frente do `web`.
+- [ ] ~~**Autenticação antes de expor na AWS**~~ **Fora do caminho (12/11/2026):** o prod é privado e temporário; a proteção é o security group sem entrada + túnel do SSM (etapa 10 do [pipeline-plano.md](pipeline-plano.md)).
+- [ ] **Fechar a porta 8000 da API** no ambiente da AWS (`docker-compose.prod.yml` da etapa 11, API sem porta publicada). HTTPS público saiu do escopo.
 
 ### Camada B (você aplica)
 
 Ordem sugerida na spec. Cada fase já tem o ponto de encaixe pronto na aplicação.
 
-- [ ] **F2: Pipeline segura** (em andamento: etapas 0 a 8 feitas; faltam a 9, que antecipa parte da F3, e as de entrega na AWS, de 10 a 12; ver [pipeline-plano.md](pipeline-plano.md)). GitHub Actions com ruff, pytest (serviço Postgres para `TEST_DATABASE_URL`), Semgrep ou Bandit, Trivy, gitleaks, Dependabot e proteção de branch. O repositório já está no GitHub: `rafelms/EduRAG`.
-- [ ] **F3: Segredos e acesso.** SOPS ou Vault, API key ou JWT (middleware em `app/api/`) e rate limiting.
-- [ ] **F4: Observabilidade.** `/metrics` para Prometheus, Grafana, Loki e OpenTelemetry. O `request_id` e os logs JSON já existem. Inclui o painel de latência do LLM (veio da Camada A) e um alerta perto do `LLM_TIMEOUT_SECONDS`.
+**Reta final redefinida em 12/11/2026:** o objetivo é deploy na AWS, Terraform e observabilidade (Prometheus + Grafana), com prod privado e destruído no fim. Por isso a F7 (Terraform) e a F4 (métricas e alertas) entraram no [pipeline-plano.md](pipeline-plano.md) como etapas 10 e 12 a 14, e a F3 ficou reduzida a segredos e teto de gastos.
+
+- [ ] **F2: Pipeline segura** (em andamento: etapas 0 a 8 feitas; faltam a 9, a infraestrutura e a entrega na AWS (10 e 11), a observabilidade (12 a 14) e o encerramento (15); ver [pipeline-plano.md](pipeline-plano.md)). GitHub Actions com ruff, pytest (serviço Postgres para `TEST_DATABASE_URL`), Semgrep ou Bandit, Trivy, gitleaks, Dependabot e proteção de branch. O repositório já está no GitHub: `rafelms/EduRAG`.
+- [ ] **F3: Segredos e acesso.** Na trilha: auditoria do histórico (feita), SSM Parameter Store e teto de gastos. Fora do caminho enquanto o prod for privado: SOPS ou Vault, API key ou JWT (middleware em `app/api/`) e rate limiting.
+- [ ] **F4: Observabilidade** (etapas 12 a 14 do plano). `/metrics` para Prometheus e Grafana na trilha; Loki e OpenTelemetry depois. O `request_id` e os logs JSON já existem. Inclui o painel de latência do LLM (veio da Camada A) e um alerta perto do `LLM_TIMEOUT_SECONDS`.
 - [ ] **F5: LLMOps.** Langfuse em `app/adapters/ollama_llm.py`, Ragas na CI (o conjunto de perguntas de referência serve também para calibrar o limiar), defesa contra prompt injection em `app/domain/prompts.py`, mascaramento de CPF e e-mail e custo em tokens. Inclui o experimento de `CHUNK_SIZE` (300 contra 800), medido com o conjunto de referência (veio da Camada A).
 - [ ] **F6: Kubernetes.** k3s ou kind, manifests e Helm; `/health` e `/ready` viram as probes.
-- [ ] **F7 (opcional): Nuvem e IaC.** Terraform.
+- [ ] **F7: Nuvem e IaC** (etapa 10 do plano, deixou de ser opcional). Terraform para a base da AWS, com portão de IaC na CI.
 
 ## Como retomar
 
