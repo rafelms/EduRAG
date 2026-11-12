@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Antes de expor</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Aula 0009 · Etapa 9 do <a href="../../pipeline-plano.md">pipeline-plano</a> · ~45 min</p>
+  <h1>Antes de expor</h1>
+  <p class="subtitle">Quem não tem login não pode gastar o seu dinheiro. Primeiro o mapa do risco, depois o teto de gastos.</p>
+</header>
+
+<div class="note">
+  <p><strong>Esta aula abre a etapa 9 e traz o plano dela:</strong> as aulas 0009 a 0013, com um PR por aula (veja o <a href="#mapa">mapa</a>). Hoje não há código: o teto de gastos é configurado <em>antes</em> de a chave existir.</p>
+</div>
+
+<h2>O que muda nesta etapa</h2>
+
+<p>Até a etapa 8, os portões olhavam o <strong>código e as imagens</strong>. A etapa 9 olha a <strong>aplicação no ar</strong>, ou seja, o que alguém de fora consegue fazer com ela. Ela vem antes do deploy porque o LLM deixa de ser o Ollama, que é grátis e roda na sua máquina, e passa a ser o Claude, cobrado por token.</p>
+
+<p>O "pronto quando" do plano: <strong>um visitante sem login não consegue gerar nenhuma chamada ao LLM.</strong></p>
+
+<h2>Aquecimento: de memória</h2>
+<p>Responda sem abrir nada e depois confira nos registros <a href="../learning-records/0010-publicacao-no-ghcr.md">0010</a> e <a href="../learning-records/0009-cooldown-e-o-custo-da-espera.md">0009</a>:</p>
+<ol>
+  <li>Por que o GHCR mostra três versões por push? Você pode apagar alguma?</li>
+  <li>No PR #38, por que a isenção foi por pacote, e não com o cooldown desligado?</li>
+</ol>
+
+<h2>O que um visitante consegue fazer hoje</h2>
+
+<p>Abra o <code>app/api/</code>. Nenhuma rota pede credencial. Mapeando cada uma para o <a href="https://api-security.owasp.org/editions/2023/en/0x11-t10/">OWASP API Security Top 10 (2023)</a>:</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Rota</th><th>Hoje, sem login</th><th>Risco</th><th>OWASP</th></tr>
+  <tr><td><code>POST /ask</code></td><td>Qualquer um pergunta, com <code>top_k</code> até 20</td><td>Gasto no Claude</td><td>API2, API4</td></tr>
+  <tr><td><code>POST /documents</code></td><td>Envia PDFs de até 20 MB</td><td>Disco e CPU dos embeddings</td><td>API2, API4</td></tr>
+  <tr><td><code>DELETE /documents/{id}</code></td><td>Apaga qualquer documento</td><td>Perda de dados</td><td>API2 (com vários usuários, API1)</td></tr>
+  <tr><td><code>GET /questions</code></td><td>Lê o histórico de todos</td><td>Vazamento das perguntas alheias</td><td>API2 (com vários usuários, API1)</td></tr>
+</table>
+</div>
+
+<p><strong>API2 (Broken Authentication)</strong> aqui nem é autenticação fraca: é autenticação ausente. <strong>API4 (Unrestricted Resource Consumption)</strong> é o risco que dá nome à etapa. A OWASP cita serviços de terceiros cobrados por requisição: no cenário 1, um script dispara dezenas de milhares de SMS a US$ 0,05 cada, e a empresa perde milhares de dólares em minutos.<span class="source"> (<a href="https://api-security.owasp.org/editions/2023/en/0xa4-unrestricted-resource-consumption">OWASP API4:2023</a>)</span> Troque "SMS" por "chamada ao Claude" e o cenário é o seu.</p>
+
+<p><strong>Repare no <code>top_k</code>.</strong> O <code>AskRequest</code> aceita de 1 a 20 (<code>app/api/schemas.py</code>, linha 28). Quem escolhe quanto contexto vai para o LLM é o cliente, e contexto é exatamente o que você paga. Entre as prevenções da API4 está "definir e aplicar um tamanho máximo para <em>todos</em> os parâmetros e payloads de entrada". Um limite que o cliente escolhe não protege nada.</p>
+
+<h2>Conta de padaria: quanto custa uma pergunta</h2>
+
+<p>As premissas vêm das suas medições na Camada A: um trecho de 800 palavras ocupa cerca de 1.200 tokens (<a href="../../progresso.md">progresso.md</a>). Somando uns 600 tokens de regras e pergunta e uns 300 de resposta, com os preços por milhão de tokens da Anthropic em 03/11/2026:<span class="source"> (<a href="https://platform.claude.com/docs/en/about-claude/pricing">Anthropic: Pricing</a>)</span></p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Modelo</th><th>Entrada / saída (US$ por 1M)</th><th><code>top_k=5</code> (~6.600 tokens)</th><th><code>top_k=20</code> (~24.600 tokens)</th></tr>
+  <tr><td>Claude Haiku 5.5</td><td>0,10 / 0,50</td><td>~US$ 0,0008</td><td>~US$ 0,0026</td></tr>
+  <tr><td>Claude Sonnet 5.5</td><td>2 / 10</td><td>~US$ 0,016</td><td>~US$ 0,052</td></tr>
+  <tr><td>Claude Opus 5.5</td><td>4 / 20</td><td>~US$ 0,032</td><td>~US$ 0,10</td></tr>
+</table>
+</div>
+
+<p>Isso é um <strong>piso</strong>: os modelos atuais raciocinam antes de responder, e esse raciocínio é cobrado como saída. A aula 0010 mede o valor real com o <code>usage</code> de cada resposta.</p>
+
+<p><strong>Aposte:</strong> um script faz uma pergunta por segundo, com <code>top_k=20</code>. Quanto tempo ele leva para gastar US$ 10 no Opus 5.5? E no Haiku 5.5?</p>
+
+<details>
+  <summary>Resposta</summary>
+  <p>No Opus, cerca de <strong>100 segundos</strong> (US$ 0,10 × 100). No Haiku, cerca de <strong>uma hora</strong> (10 ÷ 0,0026 ≈ 3.800 s). O modelo muda a escala, mas não o desfecho: sem autenticação e sem limite de taxa, gastar o teto é só questão de tempo. E repare que o <code>top_k</code> sozinho multiplica o custo por quase 4.</p>
+</details>
+
+<h2>Três camadas contra o gasto</h2>
+
+<div class="flow">
+  <span>Visitante</span><i>→</i>
+  <span>nginx: limite por IP</span><i>→</i>
+  <span>API: login</span><i>→</i>
+  <span>API: cota por usuário</span><i>→</i>
+  <span>Claude</span><i>→</i>
+  <span class="gate">Console: teto de gastos</span>
+</div>
+
+<p>É <a href="../reference/glossario.html">defesa em profundidade</a>, a mesma ideia do Semgrep e do <code>id -u</code> da etapa 7: cada camada pega o que a anterior deixou passar. O teto de gastos é a última camada e a única que <strong>não depende de o seu código estar certo</strong>. Por isso ele vem primeiro: se a autenticação da aula 0011 tiver um bug, o prejuízo para no teto.</p>
+
+<h2>Teto de gastos: como a Anthropic aplica</h2>
+
+<p>São dois tipos de limite: o <strong>de gastos</strong> (custo máximo por mês) e o <strong>de taxa</strong> (requisições e tokens por minuto).<span class="source"> (<a href="https://platform.claude.com/docs/en/api/rate-limits">Anthropic: Rate limits</a>)</span> No de gastos, há dois tetos diferentes:</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Teto</th><th>Quem define</th><th>Quando estoura</th></tr>
+  <tr><td>Do <em>tier</em> (ex.: US$ 500 no Start)</td><td>A Anthropic, pelo seu histórico</td><td><code>429</code> <code>rate_limit_error</code> com <code>error_code: enforced_spend_limit_reached</code> e <strong>sem</strong> <code>retry-after</code></td></tr>
+  <tr><td>O seu, abaixo do tier</td><td>Você, em <em>Spend limits</em></td><td><code>400</code> <code>invalid_request_error</code>: "You have reached your specified API usage limits"</td></tr>
+</table>
+</div>
+
+<p>Nos dois casos, <strong>tentar de novo não resolve</strong>: a própria documentação avisa que até as retentativas automáticas do SDK falham. A aula 0010 vai tratar isso no adaptador como "LLM indisponível", e não como erro passageiro.</p>
+
+<p><strong>Workspace.</strong> Um workspace separa projetos dentro da mesma organização, cada um com chaves e limites próprios. Duas regras importam aqui. Primeira: <strong>não dá para pôr teto de gastos no Default Workspace</strong>. Segunda: uma chave criada num workspace só age nele.<span class="source"> (<a href="https://platform.claude.com/docs/en/manage-claude/workspaces">Anthropic: Workspaces</a>)</span> Por isso, o EduRAG ganha um workspace próprio. O teto da organização continua valendo por cima de tudo.</p>
+
+<h2>A chave mora só no servidor</h2>
+
+<p>O plano diz "nenhuma chave no código do React", e o motivo é concreto. Tudo que começa com <code>VITE_</code> é copiado para o JavaScript entregue ao navegador, e a documentação do Vite diz com todas as letras que essas variáveis não devem conter chaves de API.<span class="source"> (<a href="https://vite.dev/guide/env-and-mode">Vite: Env Variables and Modes</a>)</span> Quem fala com o Claude é a API; o React só fala com a API.</p>
+
+<p>O seu portão da etapa 4 já protege esse segredo novo: o gitleaks tem as regras <code>anthropic-api-key</code> e <code>anthropic-admin-api-key</code>.<span class="source"> (<a href="https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml">gitleaks.toml</a>)</span> Localmente, a chave fica no <code>.env</code>, que está no <code>.gitignore</code> e no <code>.dockerignore</code>. Na etapa 11, ela passa para o SSM Parameter Store.</p>
+
+<h2 id="mapa">Mapa da etapa 9</h2>
+
+<p>Uma mudança em relação às etapas anteriores: aqui, a prova do portão vira <strong>teste na suíte</strong>, e não um PR descartável. Um teste "sem credencial, o LLM recebe 0 chamadas" roda em todo PR, para sempre. Um PR fechado prova uma vez só.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Aula</th><th>PR</th><th>O que entra</th><th>Prova</th></tr>
+  <tr><td>0009</td><td>nenhum (Console)</td><td>Workspace, teto de gastos, alertas, chave</td><td>Conferir na tela do Console</td></tr>
+  <tr><td>0010</td><td><code>feat/claude-llm</code></td><td><code>ClaudeLLM</code> na <code>LLMPort</code>, <code>LLM_PROVIDER</code>, <code>/ready</code> sem o Ollama no LLM, erros do teto, decisão dos embeddings</td><td>Testes com o cliente falso; a CI não usa chave real</td></tr>
+  <tr><td>0011</td><td><code>feat/autenticacao</code></td><td>Autenticação nas rotas (o modelo é decidido na aula)</td><td>Teste: <code>/ask</code> sem credencial → <code>401</code>, e o LLM falso com 0 chamadas</td></tr>
+  <tr><td>0012</td><td><code>feat/limites</code></td><td><code>limit_req</code> no nginx (por IP), cota diária por usuário (a tabela <code>questions</code> já registra cada pergunta), teto no <code>top_k</code></td><td>Rajada → <code>429</code>; cota estourada → <code>429</code></td></tr>
+  <tr><td>0013</td><td><code>feat/cabecalhos</code></td><td>Cabeçalhos de segurança no nginx; CORS fechado (o front e a API têm a mesma origem)</td><td><code>curl -I</code> mostra os cabeçalhos; outra origem não recebe <code>Access-Control-Allow-Origin</code></td></tr>
+</table>
+</div>
+
+<h2>Decisões que são suas</h2>
+
+<h3>1. Embeddings na nuvem (decidir até a aula 0010)</h3>
+
+<p>A Anthropic <strong>não tem modelo de embeddings</strong>. Ela indica a Voyage AI, que fica no MongoDB Atlas.<span class="source"> (<a href="https://platform.claude.com/docs/en/build-with-claude/embeddings">Anthropic: Embeddings</a>)</span></p>
+
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>Ollama só com o <code>nomic-embed-text</code></th><th>Voyage (<code>voyage-4-lite</code>)</th></tr>
+  <tr><td>Banco</td><td>Nada muda (vetor de 768)</td><td>Vetor de 1024 (o seu é <code>Vector(768)</code>): migration e reindexação</td></tr>
+  <tr><td>Segredos e limites</td><td>Nenhum novo</td><td>Segunda chave, segundo provedor, segundo teto</td></tr>
+  <tr><td>Custo</td><td>RAM no EC2 (medir na etapa 10)</td><td>Por token, fora da AWS</td></tr>
+</table>
+</div>
+
+<p><strong>Recomendo, por ora, o Ollama só para embeddings.</strong> É uma peça a menos para proteger, e a troca continua possível depois, porque o adaptador de embeddings também é uma porta.</p>
+
+<h3>2. O modelo do Claude (aula 0010)</h3>
+<p>A tabela de custo acima é o ponto de partida. A escolha é sua, de preferência medida com perguntas reais e com o teto que você definir hoje.</p>
+
+<h3>3. O modelo de autenticação (aula 0011)</h3>
+<p>Basic no nginx, API key por usuário ou login com JWT. A FastAPI tem ferramentas para os três em <code>fastapi.security</code>.<span class="source"> (<a href="https://fastapi.tiangolo.com/tutorial/security/">FastAPI: Security</a>)</span></p>
+
+<h3>4. Quem escreve o código</h3>
+<p>A regra da Camada B foi pensada para workflows e configuração, e esta etapa é código Python. O padrão continua sendo <strong>você escreve e eu reviso</strong>. Se quiser outro arranjo para a etapa 9, por exemplo eu escrevo os testes e você escreve o código, me diga.</p>
+
+<h2>Mão na massa (só Console)</h2>
+
+<ol class="checklist" data-key="0009-teto">
+  <li><strong>Seu tier:</strong> em <a href="https://platform.claude.com/usage/limits">Rate limits</a>, veja o tier da organização e o teto dele.</li>
+  <li><strong>Teto da organização:</strong> em <a href="https://platform.claude.com/settings/spend-limits">Spend limits</a>, use <em>Set limit</em> com um valor que você aceitaria perder num dia ruim.</li>
+  <li><strong>Workspace:</strong> em <a href="https://platform.claude.com/settings/workspaces">Workspaces</a>, crie o <code>edurag</code>.</li>
+  <li><strong>Teto do workspace:</strong> no painel do <code>edurag</code>, em <em>Spend limits</em>, defina um teto mensal (menor ou igual ao da organização) e os alertas de gasto.</li>
+  <li><strong>Rate limit do workspace (opcional):</strong> em <em>Rate limits</em>, escolha o <code>edurag</code> no menu <em>Workspace</em> e baixe o limite de requisições por minuto do modelo que você vai usar.</li>
+  <li><strong>Chave:</strong> crie uma API key <strong>dentro do workspace <code>edurag</code></strong>, com o nome <code>edurag-dev</code>. A de produção nasce na etapa 11. Guarde-a no gerenciador de senhas. <strong>Não</strong> cole a chave no chat comigo, num commit ou num comando que fique no histórico.</li>
+  <li><strong><code>.env</code> local:</strong> acrescente <code>ANTHROPIC_API_KEY=…</code> e confira com <code>git status</code>: o <code>.env</code> não pode aparecer.</li>
+  <li><strong>Me conte:</strong> o valor dos dois tetos, se configurou alertas, e as decisões 1 e 4. Eu registro no learning record e preparo a aula 0010.</li>
+</ol>
+
+<h2>Recupere da memória</h2>
+<p>As duas últimas retomam os registros 0010 e 0009.</p>
+
+<div class="quiz">
+  <div class="question" data-answer="1">
+    <p class="prompt">1. Por que o teto de gastos vem primeiro?</p>
+    <div class="options">
+      <button>A Anthropic exige o teto antes da chave</button>
+      <button>Ele não depende do seu código estar certo</button>
+      <button>Ele deixa as respostas do Claude mais baratas</button>
+    </div>
+    <p class="feedback" data-ok="Isso. É a última camada: segura o gasto mesmo se a autenticação ou o limite de taxa falharem." data-bad="Não. A chave funciona sem teto e o preço não muda. O teto vem primeiro porque não depende do seu código."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">2. Onde não dá para definir teto de gastos?</p>
+    <div class="options">
+      <button>No Default Workspace da sua organização</button>
+      <button>Num workspace novo criado por você</button>
+      <button>Na organização inteira, abaixo do tier</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Por isso a chave do EduRAG nasce num workspace próprio." data-bad="Não. A documentação diz que o Default Workspace não aceita teto de gastos; por isso existe o workspace edurag."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">3. O que a API devolve no teto que você definiu?</p>
+    <div class="options">
+      <button>429 com retry-after, e o SDK repete</button>
+      <button>500, porque o servidor da Anthropic caiu</button>
+      <button>400 dizendo que o seu limite acabou</button>
+    </div>
+    <p class="feedback" data-ok="Isso: 400 invalid_request_error. O teto do tier dá 429 sem retry-after. Nos dois casos, repetir não adianta." data-bad="Não. O seu teto dá 400 (invalid_request_error); o do tier dá 429 sem retry-after. Nenhum dos dois se resolve repetindo."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">4. Por que a chave do Claude não pode ir no React?</p>
+    <div class="options">
+      <button>Variáveis VITE_ vão para o JavaScript público</button>
+      <button>O React não consegue chamar APIs externas</button>
+      <button>O gitleaks não varre arquivos do frontend</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Vão para o build que qualquer navegador baixa. Quem fala com o Claude é a API." data-bad="Não. O motivo é que tudo que é VITE_ entra no JavaScript entregue ao navegador, legível por qualquer um."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">5. O que são as versões sem tag no GHCR?</p>
+    <div class="options">
+      <button>Imagens antigas que podem ser apagadas sem risco</button>
+      <button>Manifests filhos do index que a tag aponta</button>
+      <button>Builds de PR que o publica-api enviou antes</button>
+    </div>
+    <p class="feedback" data-ok="Isso: a imagem amd64 e a atestação. Apagar uma delas quebra o pull da tag." data-bad="Não. São a imagem amd64 e a atestação, dentro do index da tag. E PR não publica nada."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">6. Correção de segurança com dois dias de vida: e agora?</p>
+    <div class="options">
+      <button>Desligar o cooldown até a versão completar sete</button>
+      <button>Esperar sete dias, mesmo com a API exposta</button>
+      <button>Isentar só aquele pacote, com data para remover</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Foi o caminho do #38 e do #47: isenção por pacote, com prazo, e um PR só para tirá-la." data-bad="Não. Desligar o cooldown abre todos os pacotes, e esperar com a API exposta é arriscado. A saída é isentar só aquele pacote, com prazo."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">7. Por que limitar o top_k no servidor?</p>
+    <div class="options">
+      <button>Porque top_k alto deixa a busca vetorial lenta</button>
+      <button>Porque o cliente escolhe quanto contexto você paga</button>
+      <button>Porque o Claude recusa mais de cinco trechos</button>
+    </div>
+    <p class="feedback" data-ok="Isso. Com top_k=20, o custo por pergunta quase quadruplica. É parâmetro de entrada, então leva teto (API4)." data-bad="Não. O problema é o custo: o top_k decide quantos tokens vão para o Claude, e é o cliente quem escolhe."></p>
+  </div>
+</div>
+
+<footer class="lesson">
+  <p><strong>Fonte principal:</strong> <a href="https://api-security.owasp.org/editions/2023/en/0xa4-unrestricted-resource-consumption">OWASP API4:2023, Unrestricted Resource Consumption</a> (o porquê da etapa inteira) e a página <a href="https://platform.claude.com/docs/en/api/rate-limits">Rate limits</a> da Anthropic (tetos, erros e limites por workspace).</p>
+  <p><strong>Referência rápida:</strong> <a href="../reference/exposicao-segura.html">Exposição segura</a> · <a href="../reference/glossario.html">Glossário</a>.</p>
+  <p>Não achou o menu no Console, ficou em dúvida sobre o valor do teto, ou quer discutir os modelos de autenticação antes da 0011? Pergunte ao Claude no terminal. Ele é o seu professor nesta trilha.</p>
+</footer>
+
+</main>
+<script src="../assets/checklist.js"></script>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

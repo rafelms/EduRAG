@@ -67,6 +67,21 @@
 - [GitHub: Working with the Container registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
   Pacote nasce privado; vínculo automático com o repositório quando publicado por workflow; `GITHUB_TOKEN` × token pessoal. Usar para: etapa 8.
 
+- [OWASP API Security Top 10 (2023)](https://api-security.owasp.org/editions/2023/en/0x11-t10/) e a [API4: Unrestricted Resource Consumption](https://api-security.owasp.org/editions/2023/en/0xa4-unrestricted-resource-consumption)
+  A lista de riscos de API e o porquê da etapa 9: serviço pago por requisição, rate limiting, teto em todo parâmetro de entrada, limites de gasto nos provedores. Usar para: modelo de ameaça (aula 0009) e cada controle das aulas 0010 a 0013.
+- [Anthropic: Rate limits](https://platform.claude.com/docs/en/api/rate-limits)
+  Teto de gastos por tier e o seu próprio, os erros ao estourar (`429 enforced_spend_limit_reached` × `400 invalid_request_error`), limites por workspace. Usar para: aulas 0009 e 0010.
+- [Anthropic: Workspaces](https://platform.claude.com/docs/en/manage-claude/workspaces)
+  Chave presa ao workspace; Default Workspace sem teto de gastos; onde ficam o teto e a taxa do workspace no Console. Usar para: aula 0009.
+- [Anthropic: Embeddings](https://platform.claude.com/docs/en/build-with-claude/embeddings)
+  A Anthropic não tem modelo de embeddings; indica a Voyage AI (dimensões, `input_type`). Usar para: decisão dos embeddings (aula 0010).
+- [Vite: Env Variables and Modes](https://vite.dev/guide/env-and-mode)
+  `VITE_*` vai para o JavaScript público e não deve ter chave de API. Usar para: o porquê de a chave morar só na API.
+- [nginx: ngx_http_limit_req_module](https://nginx.org/en/docs/http/ngx_http_limit_req_module.html)
+  `limit_req_zone`, `burst`, `nodelay`, `limit_req_status` (padrão `503`). Usar para: aula 0012.
+- [FastAPI: Security](https://fastapi.tiangolo.com/tutorial/security/) e o tutorial [OAuth2 com JWT](https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/)
+  As ferramentas de `fastapi.security` e o fluxo de login com hash de senha. Usar para: aula 0011.
+
 ## Sabedoria (comunidades)
 
 - [GitHub Community: discussões de Actions](https://github.com/orgs/community/discussions/categories/actions)
@@ -87,4 +102,6 @@
 - Se o limite de 10 GB do cache do GitHub afeta o EduRAG: a página do Docker que li não menciona o limite.
 - Se um job pulado por `if` conta como sucesso num check obrigatório: não conferi. A aula 0008 evita a dúvida mantendo os `publica-*` fora do ruleset.
 - A página do Container registry diz que imagens públicas podem ser baixadas anonimamente, mas também que é preciso token para "instalar" pacotes públicos. Testar o `docker pull` sem login na etapa 8.
+- A página de Rate limits da Anthropic não diz se os alertas de gasto do workspace chegam por e-mail nem a quem. Conferir na tela, na aula 0009.
+- A estimativa de custo por pergunta (aula 0009) não inclui os tokens de raciocínio do modelo: medir com o `usage` real na aula 0010.
 - [GitHub Status](https://www.githubstatus.com): primeiro lugar a olhar quando os checks ficam presos em *Queued* sem log (foi um incidente do Actions no PR #6).

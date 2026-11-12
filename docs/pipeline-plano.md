@@ -149,12 +149,14 @@ Aula: [0008](estudo/lessons/0008-publicar-no-ghcr.html). Desenho: jobs `publica-
 
 ### Etapa 9 — Segurança da aplicação antes de expor
 
-- [ ] Adaptador `ClaudeLLM` para a `LLMPort`, escolhido por `LLM_PROVIDER` (`ollama` local, `claude` na nuvem).
-- [ ] Decidir os embeddings na nuvem: Ollama só com o `nomic-embed-text` (testar a memória) ou provedor externo (exige migration e reindexação).
-- [ ] Autenticação no backend (login simples ou API key por usuário); nenhuma chave no código do React.
-- [ ] Rate limiting por usuário/IP e tamanho máximo de upload mantido.
-- [ ] CORS restrito ao domínio do front; cabeçalhos de segurança no Nginx.
-- [ ] Limite de gastos configurado no Console da Anthropic.
+**Em andamento.** Plano de estudos e modelo de ameaça: aula [0009](estudo/lessons/0009-antes-de-expor.html); referência [Exposição segura](estudo/reference/exposicao-segura.html). Uma aula e um PR por item. Diferente das etapas anteriores, a prova de cada portão vira **teste na suíte**, e não PR descartável.
+
+- [ ] **Aula 0009, Console (sem PR):** workspace `edurag`, teto de gastos na organização e no workspace (o Default Workspace não aceita teto), alertas, chave `edurag-dev` criada no workspace e guardada fora do repositório. Vem primeiro porque é a única camada que não depende do código.
+- [ ] **Aula 0010, `feat/claude-llm`:** adaptador `ClaudeLLM` para a `LLMPort`, escolhido por `LLM_PROVIDER` (`ollama` local, `claude` na nuvem). O `/ready` deixa de exigir o Ollama para o LLM. Os erros de teto de gastos (`400`/`429` sem `retry-after`) são tratados como indisponibilidade, sem nova tentativa. Testes com cliente falso; a CI não usa chave real. Escolha do modelo com custo medido pelo `usage`.
+- [ ] **Decidir os embeddings na nuvem (até a 0010):** a Anthropic não tem modelo de embeddings. As opções são o Ollama só com o `nomic-embed-text` (sem migration; medir a RAM na etapa 10) ou a Voyage (vetor de 1024 contra o `Vector(768)` atual: migration, reindexação, segunda chave). Recomendação da aula 0009: Ollama.
+- [ ] **Aula 0011, `feat/autenticacao`:** autenticação no backend (Basic no nginx, API key por usuário ou login com JWT, decidido na aula); nenhuma chave no código do React (`VITE_*` é público). Prova: `/ask` sem credencial → `401`, e o LLM falso com 0 chamadas.
+- [ ] **Aula 0012, `feat/limites`:** `limit_req` por IP no nginx; cota diária por usuário (a tabela `questions` já registra cada pergunta); teto no `top_k` (hoje o cliente escolhe até 20, quase 4× o custo de `top_k=5`); upload máximo mantido. Prova: rajada → `429`; cota estourada → `429`.
+- [ ] **Aula 0013, `feat/cabecalhos`:** CORS fechado (o front e a API estão na mesma origem); cabeçalhos de segurança no Nginx. Prova: `curl -I` mostra os cabeçalhos; outra origem não recebe `Access-Control-Allow-Origin`.
 
 *Pronto quando:* um visitante sem login não consegue gerar nenhuma chamada ao LLM.
 
