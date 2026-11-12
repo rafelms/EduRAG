@@ -1,13 +1,13 @@
 # EduRAG: progresso
 
-> Atualizado em 30/10/2026. Referência: [spec.md](spec.md).
+> Atualizado em 12/11/2026. Referência: [spec.md](spec.md).
 
 ## Resumo
 
 - **Camada A (aplicação):** implementada e **validada ponta a ponta** com PostgreSQL + pgvector e Ollama reais (`qwen2.5:3b` e `nomic-embed-text`). Falta só a sua revisão do código.
 - **Qualidade da recuperação:** funciona, mas o limiar `MIN_SCORE` **não separa bem** perguntas do tema e fora do tema com esse modelo de embeddings (detalhes abaixo). Decisão tomada: aceitar a limitação e documentá-la na spec; quem segura as perguntas fora do tema é o prompt, não o limiar.
 - **Frontend (16/10/2026; na spec como RF09 e T11 desde 19/10/2026):** interface React + Tailwind em `frontend/`, servida por nginx no compose (porta 8080), pensada para o deploy na AWS. Validada ponta a ponta pelo proxy e conferida no navegador em 19/10/2026.
-- **Camada B (operação):** em andamento. Etapas 0 a 5 e 7 da pipeline concluídas e a 6 quase concluída (ver [pipeline-plano.md](pipeline-plano.md)): CI de backend e frontend, `main` protegida, gitleaks (segredos), Semgrep (SAST), Trivy + `npm audit` (dependências vulneráveis) e build + `trivy image` + checagem de não-root nas duas imagens, todos como checks obrigatórios. Da cadeia de suprimentos, as actions já estão fixadas por SHA e o Dependabot está ativo (primeira rodada de 8 PRs mesclada em 28/10). Falta da etapa 6 só o cooldown do uv, a partir de 30/10; depois, a 8 (publicar no GHCR).
+- **Camada B (operação):** em andamento. **Etapas 0 a 8 da pipeline concluídas**, e com elas os blocos A, B e C (ver [pipeline-plano.md](pipeline-plano.md)). Estão como checks obrigatórios: CI de backend e frontend, `main` protegida, gitleaks (segredos), Semgrep (SAST), Trivy + `npm audit` (dependências vulneráveis) e build + `trivy image` + checagem de não-root nas duas imagens. Cadeia de suprimentos: actions fixadas por SHA, Dependabot ativo e cooldown de 7 dias no uv e no Dependabot (PR #38, 04/11). Desde o PR #40 (04/11), cada merge na `main` publica as duas imagens no GHCR com a tag do SHA. Próxima: etapa 9 (segurança da aplicação antes de expor).
 
 ## O que foi feito
 
@@ -186,7 +186,7 @@ Itens movidos para a Camada B, onde viram trabalho medido em vez de ajuste avuls
 
 Ordem sugerida na spec. Cada fase já tem o ponto de encaixe pronto na aplicação.
 
-- [ ] **F2: Pipeline segura** (em andamento: etapas 0 a 5 e 7 feitas e a 6 quase, ver [pipeline-plano.md](pipeline-plano.md)). GitHub Actions com ruff, pytest (serviço Postgres para `TEST_DATABASE_URL`), Semgrep ou Bandit, Trivy, gitleaks, Dependabot e proteção de branch. O repositório já está no GitHub: `rafelms/EduRAG`.
+- [ ] **F2: Pipeline segura** (em andamento: etapas 0 a 8 feitas; faltam a 9, que antecipa parte da F3, e as de entrega na AWS, de 10 a 12; ver [pipeline-plano.md](pipeline-plano.md)). GitHub Actions com ruff, pytest (serviço Postgres para `TEST_DATABASE_URL`), Semgrep ou Bandit, Trivy, gitleaks, Dependabot e proteção de branch. O repositório já está no GitHub: `rafelms/EduRAG`.
 - [ ] **F3: Segredos e acesso.** SOPS ou Vault, API key ou JWT (middleware em `app/api/`) e rate limiting.
 - [ ] **F4: Observabilidade.** `/metrics` para Prometheus, Grafana, Loki e OpenTelemetry. O `request_id` e os logs JSON já existem. Inclui o painel de latência do LLM (veio da Camada A) e um alerta perto do `LLM_TIMEOUT_SECONDS`.
 - [ ] **F5: LLMOps.** Langfuse em `app/adapters/ollama_llm.py`, Ragas na CI (o conjunto de perguntas de referência serve também para calibrar o limiar), defesa contra prompt injection em `app/domain/prompts.py`, mascaramento de CPF e e-mail e custo em tokens. Inclui o experimento de `CHUNK_SIZE` (300 contra 800), medido com o conjunto de referência (veio da Camada A).

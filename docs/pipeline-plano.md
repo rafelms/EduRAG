@@ -1,6 +1,6 @@
 # EduRAG — Plano de implementação da pipeline (F2 → deploy na AWS)
 
-> Atualizado em 30/10/2026. Referências: [spec.md](spec.md) e [progresso.md](progresso.md).
+> Atualizado em 12/11/2026. Referências: [spec.md](spec.md) e [progresso.md](progresso.md).
 > Regra da Camada B: **você escreve os workflows**; a IA explica e revisa.
 
 ## Visão geral
@@ -90,7 +90,7 @@ Para cada ferramenta: primeiro rodar em modo de relatório, corrigir o que apare
 
 ### Etapa 6 — Dependências
 
-**Em andamento: parte 1 concluída; da parte 2 falta só o cooldown do uv (a partir de 30/10, 15:48).** Aulas: [0004](estudo/lessons/0004-vulnerabilidades-com-trivy.html) (portão de vulnerabilidades), [0005](estudo/lessons/0005-cadeia-de-suprimentos.html) (cadeia de suprimentos) e [0007](estudo/lessons/0007-cooldown-na-pratica.html) (cooldown na prática).
+**Concluída em 04/11/2026** ([PR #38](https://github.com/rafelms/EduRAG/pull/38), cooldown). Registros: [0005](estudo/learning-records/0005-trivy-e-npm-audit-provados.md), [0007](estudo/learning-records/0007-primeira-rodada-do-dependabot.md) e [0009](estudo/learning-records/0009-cooldown-e-o-custo-da-espera.md). Aulas: [0004](estudo/lessons/0004-vulnerabilidades-com-trivy.html) (portão de vulnerabilidades), [0005](estudo/lessons/0005-cadeia-de-suprimentos.html) (cadeia de suprimentos) e [0007](estudo/lessons/0007-cooldown-na-pratica.html) (cooldown na prática).
 
 *Parte 1: portão de vulnerabilidades (aula 0004)*
 - [x] Corrigir o CRITICAL que o Trivy já achava (`certifi 2026.7.22` → `2026.10.19`): [PR #12](https://github.com/rafelms/EduRAG/pull/12).
@@ -101,7 +101,7 @@ Para cada ferramenta: primeiro rodar em modo de relatório, corrigir o que apare
 
 *Parte 2: cadeia de suprimentos (aula 0005)*
 - [x] Fixar por SHA todas as actions de `ci.yml` e `security.yml` (o Semgrep acusava 12 usos por tag), com o comentário `# vX.Y.Z`: [PR #17](https://github.com/rafelms/EduRAG/pull/17).
-- [ ] Cooldown no uv (`exclude-newer = "7 days"`) e, junto, `cooldown` com `default-days: 7` no bloco `uv` do `dependabot.yml`, para o Dependabot não propor mínimos que o uv ainda não aceita. O uv novo no `Dockerfile` já entrou no PR #29. **Só a partir de 30/10, 15:48 (Brasília):** a `fastapi 0.162.0`, mínimo exigido desde o PR #24, foi publicada em 23/10 às 18:47 UTC; antes disso o `uv lock` falha. Testado em 30/10 (uv 0.13.1): depois desse horário, o lock não rebaixa nada (o `certifi 2026.10.23` já passou dos 7 dias) e só ganha o bloco `[options]`.
+- [x] Cooldown no uv (`exclude-newer = "7 days"`) e, junto, `cooldown` com `default-days: 7` no bloco `uv` do `dependabot.yml`, para o Dependabot não propor mínimos que o uv ainda não aceita. O uv novo no `Dockerfile` entrou no PR #29: [PR #38](https://github.com/rafelms/EduRAG/pull/38), mesclado em 04/11. O lock ganhou só o bloco `[options]`. No caminho, o `trivy-fs` barrou a `pypdf 6.21.2` (7 HIGH); a correção veio no #42 do Dependabot, com versões de menos de 7 dias, e exigiu uma isenção temporária por pacote (`pypdf`, `python-multipart`), **removida em 12/11** ([PR #47](https://github.com/rafelms/EduRAG/pull/47)).
 - [x] `.github/dependabot.yml` para Python (`uv`), npm, Docker e GitHub Actions (é arquivo de configuração, não job): [PR #18](https://github.com/rafelms/EduRAG/pull/18). Primeira rodada em 27/10/2026: 8 PRs (#19 a #26), todos com merge em 28/10; o primeiro foi o [PR #25](https://github.com/rafelms/EduRAG/pull/25). O *Insights → Dependency graph → Dependabot* leu os 4 blocos sem erro. O #20 e o #23 levaram o frontend para a Node 26 e a CI foi alinhada no [PR #27](https://github.com/rafelms/EduRAG/pull/27).
 
 *Pronto quando:* o Semgrep não acusa mais cadeia de suprimentos e o Dependabot abriu o primeiro PR.
@@ -131,9 +131,14 @@ Aula: [0006](estudo/lessons/0006-build-e-scan-de-imagens.html). Situação medid
 
 Aula: [0008](estudo/lessons/0008-publicar-no-ghcr.html). Desenho: jobs `publica-api` e `publica-front` no `build.yml`, com `needs` no portão da mesma imagem, só em push na `main` e com `packages: write` só neles.
 
-- [ ] Só na `main` e só depois de todos os portões anteriores.
-- [ ] Login com o `GITHUB_TOKEN` (sem criar segredo novo).
-- [ ] Tag com o SHA do commit (e `latest` só como apelido).
+**Concluída em 04/11/2026** ([PR #40](https://github.com/rafelms/EduRAG/pull/40)). Registro: [0010](estudo/learning-records/0010-publicacao-no-ghcr.md).
+
+- [x] Só na `main` e só depois do portão da mesma imagem (`needs` + `if` de push na `main`). Os portões de código já foram exigidos no PR pelo ruleset.
+- [x] Login com o `GITHUB_TOKEN` (sem criar segredo novo).
+- [x] Tag com o SHA do commit (e `latest` só como apelido).
+
+**Conferido em 12/11/2026:** no PR, os jobs `publica-*` ficam `skipped`; na `main`, os 4 merges desde o #40 publicaram `ghcr.io/rafelms/edurag-api` e `edurag-front` com a tag do SHA (`cd809cb…` é a atual, com `latest`). Os pacotes são públicos. Cada tag é um *image index* com a imagem amd64 e a atestação de proveniência.
+*Ponto em aberto:* o `publica-*` refaz o build em vez de enviar a imagem escaneada. Com o cache o digest sai igual (visto em 12/11), mas não é garantido; publicar o mesmo digest fica como melhoria.
 
 *Pronto quando:* cada merge na `main` gera uma imagem rastreável até o commit.
 *Para estudar:* por que tag por SHA permite rollback e `latest` não.
@@ -162,7 +167,7 @@ Aula: [0008](estudo/lessons/0008-publicar-no-ghcr.html). Desenho: jobs `publica-
 - [ ] Alerta de orçamento (AWS Budgets) no primeiro dia.
 - [ ] Usuário do dia a dia sem ser o root, com MFA.
 - [ ] Provedor **OIDC** do GitHub e uma *role* IAM com permissão mínima (ECR e SSM), sem access key guardada.
-- [ ] Repositórios no **ECR** para `api` e `front`.
+- [ ] Repositórios no **ECR** para `api` e `front`. *Decidir antes:* os pacotes do GHCR já são públicos e o EC2 consegue puxá-los sem credencial; o ECR só se justifica se as imagens tiverem que ficar privadas ou dentro da AWS.
 - [ ] **EC2** com Docker, agente do **SSM** e *security group* abrindo só 80/443 (sem SSH aberto para a internet).
 - [ ] Postgres no EC2 via compose, com volume persistente e backup simples.
 
