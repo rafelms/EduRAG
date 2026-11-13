@@ -70,6 +70,22 @@ def test_effort_invalido_nao_sobe(monkeypatch, effort):
         Settings()
 
 
+def test_sem_database_url_nao_sobe(monkeypatch):
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    with pytest.raises(ValidationError, match="database_url"):
+        Settings()
+
+
+def test_senha_do_banco_nao_aparece_no_repr(monkeypatch):
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://edurag:senha-do-banco@db/edurag")
+
+    settings = Settings()
+
+    assert "senha-do-banco" not in repr(settings)
+    assert "senha-do-banco" in settings.database_url.get_secret_value()
+
+
 def test_chave_nao_aparece_no_repr():
     settings = Settings(
         llm_provider="claude", llm_model="claude-sonnet-5", anthropic_api_key="sk-segredo"

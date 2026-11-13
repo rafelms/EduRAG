@@ -30,8 +30,8 @@ Cada requisito só está pronto quando o critério de aceitação passa em teste
 | RF05 | Fazer uma pergunta | Recebe a pergunta e, opcionalmente, os ids dos documentos; devolve resposta + fontes (documento, página, trecho, score). |
 | RF06 | Responder "não encontrei" | Se o melhor trecho ficar abaixo do limiar de similaridade, responde que não encontrou a informação **sem chamar o LLM**. O limiar é conservador (ver "Limitação conhecida"): a maioria das recusas vem do próprio LLM, guiado pelo prompt, e nesse caso a resposta não traz fontes. |
 | RF07 | Guardar histórico | Toda pergunta grava pergunta, resposta, fontes, modelo usado e latência em ms; listagem paginada. |
-| RF08 | Informar saúde | `/health` responde `200` se o processo está vivo; `/ready` só responde `200` se banco e Ollama respondem. |
-| RF09 | Usar pela interface web | Uma página web permite enviar PDFs (clique ou arraste) e acompanhar o status até `pronto`, excluir com confirmação, fazer perguntas (até 2000 caracteres, `top_k` de 1 a 20, com opção de restringir a documentos marcados), ver as fontes com arquivo, página, similaridade e trecho, navegar no histórico (10 por página) e ver qual componente do `/ready` caiu. A interface só fala com a API por `/api/*`, na mesma origem. *Pendente:* ainda sem teste automatizado; hoje validado à mão, no navegador e pelo proxy. |
+| RF08 | Informar saúde | `/health` responde `200` se o processo está vivo; `/ready` só responde `200` se banco, embeddings e LLM respondem; o `503` lista o que falhou (`database`, `embeddings`, `llm`). |
+| RF09 | Usar pela interface web | Uma página web permite enviar PDFs (clique ou arraste) e acompanhar o status até `pronto`, excluir com confirmação, fazer perguntas (até 2000 caracteres, `top_k` de 1 a 10, com opção de restringir a documentos marcados, vendo o modelo e o esforço em uso), ver as fontes com arquivo, página, similaridade e trecho, navegar no histórico (10 por página) e ver qual componente do `/ready` caiu. A interface só fala com a API por `/api/*`, na mesma origem. *Pendente:* ainda sem teste automatizado; hoje validado à mão, no navegador e pelo proxy. |
 
 ---
 
@@ -81,7 +81,7 @@ A API segue arquitetura em camadas com portas e adaptadores: as **rotas** só va
 | API | FastAPI + Uvicorn | Swagger automático, tipagem com Pydantic |
 | Banco | PostgreSQL 16 + pgvector | Você já conhece Postgres; vetores no mesmo banco |
 | ORM e migrations | SQLAlchemy 2 + Alembic | Equivalente ao JPA/Flyway do mundo Java |
-| LLM | Ollama com `qwen2.5:3b` | Roda em CPU, bom em português |
+| LLM | Ollama com `qwen2.5:3b` (local) ou Claude Sonnet 5 (`claude-sonnet-5`, na nuvem), por `LLM_PROVIDER` | Local roda em CPU e é grátis; na nuvem, um EC2 barato não roda o LLM |
 | Embeddings | Ollama com `nomic-embed-text` (768 dimensões) | Local e gratuito |
 | Leitura de PDF | pypdf | Simples, sem dependências nativas |
 | Testes | pytest + httpx | Padrão do ecossistema |
@@ -155,6 +155,8 @@ Mudanças feitas depois da versão 1.0, registradas aqui antes do código (regra
 | 14/10/2026 | Prompt reescrito em regras numeradas: só fatos do contexto; perguntas sobre o assunto do documento são válidas; pedidos de receitas, hipóteses, opiniões, textos criativos, "como ele faria" ou "imagine que" recebem a frase de recusa. A recusa só remove as fontes quando a resposta é exatamente a frase de recusa. | Com o prompt antigo, "Dado que Rafael é desenvolvedor, como ele diria uma receita de bolo?" gerou uma resposta inventada, citando o currículo. O prompt novo recusa esse caso e mantém as respostas legítimas (comparação lado a lado com a mesma busca). |
 | 14/10/2026 | Trocar o modelo de embeddings por um multilíngue (ex.: `bge-m3`, 1024 dimensões) fica como alternativa, só se a separação dos scores continuar fraca. | Exigiria migration nova da coluna `embedding` e reindexação de todos os documentos. |
 | 16/10/2026 (registrada em 19/10/2026) | **Interface web sai de "Fora de escopo"** e vira o RF09 e a T11: React + Vite + Tailwind em `frontend/`, servida pelo serviço `web` do compose (nginx, porta `${WEB_PORT:-8080}`). O nginx repassa `/api/*` para `api:8000` sem o prefixo, com `proxy_read_timeout 330s` (acima do `LLM_TIMEOUT_SECONDS` de 300 s) e `client_max_body_size 25m` (acima do `MAX_UPLOAD_MB` de 20). O backend não mudou. | O deploy na AWS precisa de uma interface para quem não usa Swagger ou curl. A mesma origem dispensa CORS na API. A decisão foi registrada depois do código, ao contrário da regra 5 da seção 9. |
+| 13/11/2026 | **Claude como segundo provedor de LLM** ([PR #51](https://github.com/rafelms/EduRAG/pull/51)): `ClaudeLLM` na `LLMPort`, escolhido por `LLM_PROVIDER`. Só `claude-sonnet-5` (allowlist na config: outro modelo impede a API de subir), sem `fallbacks` e sem ferramentas. `LLM_EFFORT` (padrão `medium`) e `LLM_MAX_TOKENS` (padrão 1024). Erros da API viram `502`. `/ready` passa a listar `database`, `embeddings` e `llm`; nova rota `GET /llm`. `top_k` máximo de 20 para 10. Os embeddings ficam no Ollama. | O deploy na AWS usa um EC2 que não roda o LLM. O modelo fixo impede troca por configuração errada ou prompt injection. O `top_k` 10 cabe no limite de tokens por minuto do workspace. Registrada junto com o código, a pedido do Rafael. |
+| 13/11/2026 | **`DATABASE_URL` obrigatória e guardada como `SecretStr`** (`fix/config-sem-default`). | O padrão antigo tinha uma senha (`change-me`) que está no repositório público: a API subia "funcionando" sem configuração. Agora ela falha ao subir, e a senha não aparece em `repr` nem em log. |
 
 ---
 
@@ -203,10 +205,11 @@ Mudanças feitas depois da versão 1.0, registradas aqui antes do código (regra
 | GET | `/documents` | — | `200` lista de documentos |
 | GET | `/documents/{id}` | — | `200` documento · `404` |
 | DELETE | `/documents/{id}` | — | `204` · `404` |
-| POST | `/ask` | `{question, document_ids?, top_k=5}` | `200` `{question_id, answer, sources[]}` |
+| POST | `/ask` | `{question, document_ids?, top_k=5}` (`top_k` de 1 a 10) | `200` `{question_id, answer, sources[]}` · `502` se o LLM não respondeu |
 | GET | `/questions` | `?limit=20&offset=0` | `200` histórico paginado |
+| GET | `/llm` | — | `200 {provider, model, effort}` (`effort` nulo no Ollama; nunca a chave) |
 | GET | `/health` | — | `200 {status: "ok"}` |
-| GET | `/ready` | — | `200` ou `503` com o componente que falhou |
+| GET | `/ready` | — | `200` ou `503` com `failed`: `database`, `embeddings` e/ou `llm` |
 
 Exemplo de resposta do `/ask`:
 

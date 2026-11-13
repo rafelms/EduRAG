@@ -68,7 +68,7 @@ def build_llm(settings: Settings) -> LLMPort:
 
 def build_services(settings: Settings) -> Services:
     """Serviços de produção: PostgreSQL, embeddings no Ollama e o LLM escolhido."""
-    engine = create_db_engine(settings.database_url)
+    engine = create_db_engine(settings.database_url.get_secret_value())
     return assemble_services(
         settings,
         repository=PgDocumentRepository(create_session_factory(engine)),
