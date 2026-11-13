@@ -115,7 +115,7 @@ Criado para o deploy na AWS, antes de estar na spec; registrado depois como RF09
 **Telas:**
 
 - **Documentos:** upload por clique ou arraste (vários PDFs), status atualizado a cada 3 s enquanto algum está em `processando`, exclusão com confirmação. Documentos prontos podem ser marcados para restringir a busca (`document_ids`); sem marcação, usa todos.
-- **Perguntar:** contador até 2000 caracteres (mesmo limite do `AskRequest`), ajuste de `top_k` (1 a 20), cronômetro durante a geração. A resposta mostra as fontes com arquivo, página, similaridade em % e o trecho.
+- **Perguntar:** contador até 2000 caracteres (mesmo limite do `AskRequest`), ajuste de `top_k` (1 a 10 desde 13/11/2026; era 1 a 20), modelo e esforço do LLM ao lado, cronômetro durante a geração. A resposta mostra as fontes com arquivo, página, similaridade em % e o trecho.
 - **Histórico:** `GET /questions`, 10 por página.
 - **Cabeçalho:** consulta `/ready` a cada 30 s e mostra qual componente caiu.
 
@@ -188,7 +188,7 @@ Ordem sugerida na spec. Cada fase já tem o ponto de encaixe pronto na aplicaç�
 
 **Reta final redefinida em 12/11/2026:** o objetivo é deploy na AWS, Terraform e observabilidade (Prometheus + Grafana), com prod privado e destruído no fim. Por isso a F7 (Terraform) e a F4 (métricas e alertas) entraram no [pipeline-plano.md](pipeline-plano.md) como etapas 10 e 12 a 14, e a F3 ficou reduzida a segredos e teto de gastos.
 
-- [ ] **F2: Pipeline segura** (em andamento: etapas 0 a 8 feitas; faltam a 9, a infraestrutura e a entrega na AWS (10 e 11), a observabilidade (12 a 14) e o encerramento (15); ver [pipeline-plano.md](pipeline-plano.md)). GitHub Actions com ruff, pytest (serviço Postgres para `TEST_DATABASE_URL`), Semgrep ou Bandit, Trivy, gitleaks, Dependabot e proteção de branch. O repositório já está no GitHub: `rafelms/EduRAG`.
+- [ ] **F2: Pipeline segura** (em andamento: etapas 0 a 9 feitas, com o Claude Sonnet 5 como LLM na nuvem; faltam a infraestrutura e a entrega na AWS (10 e 11), a observabilidade (12 a 14) e o encerramento (15); ver [pipeline-plano.md](pipeline-plano.md)). GitHub Actions com ruff, pytest (serviço Postgres para `TEST_DATABASE_URL`), Semgrep ou Bandit, Trivy, gitleaks, Dependabot e proteção de branch. O repositório já está no GitHub: `rafelms/EduRAG`.
 - [ ] **F3: Segredos e acesso.** Na trilha: auditoria do histórico (feita), SSM Parameter Store e teto de gastos. Fora do caminho enquanto o prod for privado: SOPS ou Vault, API key ou JWT (middleware em `app/api/`) e rate limiting.
 - [ ] **F4: Observabilidade** (etapas 12 a 14 do plano). `/metrics` para Prometheus e Grafana na trilha; Loki e OpenTelemetry depois. O `request_id` e os logs JSON já existem. Inclui o painel de latência do LLM (veio da Camada A) e um alerta perto do `LLM_TIMEOUT_SECONDS`.
 - [ ] **F5: LLMOps.** Langfuse em `app/adapters/ollama_llm.py`, Ragas na CI (o conjunto de perguntas de referência serve também para calibrar o limiar), defesa contra prompt injection em `app/domain/prompts.py`, mascaramento de CPF e e-mail e custo em tokens. Inclui o experimento de `CHUNK_SIZE` (300 contra 800), medido com o conjunto de referência (veio da Camada A).

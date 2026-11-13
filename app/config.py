@@ -15,7 +15,9 @@ ALLOWED_CLAUDE_MODELS = frozenset({"claude-sonnet-5"})
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=None, extra="ignore")
 
-    database_url: str = "postgresql+psycopg://edurag:change-me@localhost:5432/edurag"
+    # Obrigatória e sem padrão: sem ela a API não sobe, em vez de tentar uma senha
+    # conhecida. SecretStr porque a URL carrega a senha do banco.
+    database_url: SecretStr
     ollama_base_url: str = "http://localhost:11434"
     # Quem gera as respostas. Os embeddings continuam sempre no Ollama.
     llm_provider: Literal["ollama", "claude"] = "ollama"

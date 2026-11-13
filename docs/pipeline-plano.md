@@ -154,18 +154,18 @@ Aula: [0008](estudo/lessons/0008-publicar-no-ghcr.html). Desenho: jobs `publica-
 
 ### Etapa 9 — Segredos, teto de gastos e LLM na nuvem
 
-**Em andamento.** Aula [0009](estudo/lessons/0009-antes-de-expor.html) (Console da Anthropic). Esta etapa foi **enxugada em 12/11/2026**: como o ambiente é privado, a proteção contra visitantes passa a ser a rede fechada da etapa 10, e não login no app. As antigas aulas 0011 a 0013 (autenticação, cota, CORS) saíram do caminho (ver [Fora do caminho](#fora-do-caminho)).
+**Concluída em 13/11/2026.** Aula [0009](estudo/lessons/0009-antes-de-expor.html) (Console da Anthropic) e registros [0011](estudo/learning-records/0011-auditoria-de-segredos.md) e [0012](estudo/learning-records/0012-teto-de-gastos-e-sonnet-5-fixo.md). Esta etapa foi **enxugada em 12/11/2026**: como o ambiente é privado, a proteção contra visitantes passa a ser a rede fechada da etapa 10, e não login no app. As antigas aulas 0011 a 0013 (autenticação, cota, CORS) saíram do caminho (ver [Fora do caminho](#fora-do-caminho)).
 
 - [x] **Auditoria de segredos no histórico (12/11/2026).** Registro: [0011](estudo/learning-records/0011-auditoria-de-segredos.md).
   - gitleaks v8.21.2 em `--all`, mais os *heads* dos 8 PRs fechados sem merge (#1, #3, #6, #9, #10, #14, #35, #36), que continuam públicos em `refs/pull/N/head`: 73 commits, **1 achado**, a chave AWS falsa do PR #6 (`config-falsa.env`, a prova da etapa 4).
   - *Secret scanning* do GitHub: 0 alertas. O `.env` nunca foi commitado (`git log --all -- .env` vazio) e só tem variáveis de configuração e a senha local do Postgres.
   - Busca manual (o gitleaks não pega senha genérica): só `edurag:edurag` no Postgres efêmero da CI (aceitável: o banco morre com o job) e o padrão `change-me` no `app/config.py`.
-- [ ] **`fix/config-sem-default`:** tirar o valor padrão de `database_url` em `app/config.py` (hoje `postgresql+psycopg://edurag:change-me@localhost…`). Sem padrão, a API falha ao subir sem `DATABASE_URL`, em vez de tentar uma senha conhecida. Conferir se os testes continuam passando.
+- [x] **`fix/config-sem-default` (13/11/2026, código pela IA, a pedido dele):** `DATABASE_URL` obrigatória e guardada como `SecretStr`. Sem ela, a API falha ao subir (`database_url Field required`), em vez de tentar a senha `change-me`, que está no repositório público. Os testes ganharam `tests/conftest.py` com uma URL só de teste. 92 testes passando.
 - [x] **Aula 0009, Console (13/11/2026):** workspace `edurag`, teto de **US$ 5/mês** na organização e no workspace, limites do Sonnet 5 (15 mil entrada, 4 mil saída, 5 req/min), chave `edurag-dev` só no `.env`. Registro: [0012](estudo/learning-records/0012-teto-de-gastos-e-sonnet-5-fixo.md).
-- [ ] **Aula 0010, `feat/claude-llm` (código escrito pela IA, a pedido dele):** adaptador `ClaudeLLM`, escolhido por `LLM_PROVIDER` (`ollama` local, `claude` na nuvem). **Só `claude-sonnet-5`**: allowlist na config (a API não sobe com outro modelo), sem `fallbacks`, sem ferramentas. Erros da API (teto `400`/`429`, rede) viram `LLMUnavailableError` → `502`. O `/ready` separa `embeddings` e `llm`. `top_k` máximo de 20 para 10. Tokens de cada chamada no log. Testes com cliente falso; a CI não usa chave real.
+- [x] **Aula 0010, `feat/claude-llm` ([PR #51](https://github.com/rafelms/EduRAG/pull/51), mesclado em 13/11/2026; código escrito pela IA, a pedido dele; testado por ele com a chave real):** `LLM_EFFORT` (padrão `medium`) e a rota `GET /llm`, que mostra modelo e esforço na interface, entraram no mesmo PR. adaptador `ClaudeLLM`, escolhido por `LLM_PROVIDER` (`ollama` local, `claude` na nuvem). **Só `claude-sonnet-5`**: allowlist na config (a API não sobe com outro modelo), sem `fallbacks`, sem ferramentas. Erros da API (teto `400`/`429`, rede) viram `LLMUnavailableError` → `502`. O `/ready` separa `embeddings` e `llm`. `top_k` máximo de 20 para 10. Tokens de cada chamada no log. Testes com cliente falso; a CI não usa chave real.
 - [x] **Embeddings na nuvem:** Ollama só com o `nomic-embed-text` (decidido em 13/11). Medir a RAM na etapa 10.
 
-*Pronto quando:* nenhum segredo real no histórico (feito), teto de gastos ativo e a API responde com o Claude na sua máquina.
+*Pronto quando:* nenhum segredo real no histórico, teto de gastos ativo e a API responde com o Claude na sua máquina. **Concluída em 13/11/2026** (com o merge do `fix/config-sem-default`).
 
 ---
 
