@@ -1,3 +1,8 @@
+from fastapi.testclient import TestClient
+
+from app.config import Settings
+from app.container import assemble_services
+from app.main import create_app
 from app.ports.llm import LLMUnavailableError
 from tests.pdfs import make_blank_pdf, make_pdf
 
@@ -115,6 +120,25 @@ def test_pergunta_invalida_responde_422(client):
     assert client.post("/ask", json={"question": "   "}).status_code == 422
     assert client.post("/ask", json={"question": "ok", "top_k": 0}).status_code == 422
     assert client.post("/ask", json={"question": "ok", "top_k": 11}).status_code == 422
+
+
+def test_llm_informa_modelo_sem_esforco_no_ollama(client):
+    assert client.get("/llm").json() == {"provider": "ollama", "model": "fake-llm", "effort": None}
+
+
+def test_llm_informa_modelo_e_esforco_no_claude(fakes):
+    settings = Settings(
+        llm_provider="claude",
+        llm_model="claude-sonnet-5",
+        anthropic_api_key="sk-segredo",
+        llm_effort="high",
+    )
+    services = assemble_services(settings, **fakes)
+    with TestClient(create_app(services)) as client:
+        body = client.get("/llm").json()
+
+    assert body == {"provider": "claude", "model": "fake-llm", "effort": "high"}
+    assert "sk-segredo" not in str(body)
 
 
 def test_llm_indisponivel_responde_502(client, fakes):

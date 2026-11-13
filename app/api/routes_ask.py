@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from httpx import HTTPError
 
 from app.api.routes_documents import ServicesDep
-from app.api.schemas import AskRequest, AskResponse, QuestionOut, QuestionsPage
+from app.api.schemas import AskRequest, AskResponse, LLMInfo, QuestionOut, QuestionsPage
 from app.ports.llm import LLMUnavailableError
 
 router = APIRouter(tags=["perguntas"])
@@ -24,6 +24,16 @@ def ask(body: AskRequest, services: ServicesDep) -> AskResponse:
         question_id=answer.question_id,
         answer=answer.answer,
         sources=[asdict(s) for s in answer.sources],
+    )
+
+
+@router.get("/llm", response_model=LLMInfo)
+def llm_info(services: ServicesDep) -> LLMInfo:
+    settings = services.settings
+    return LLMInfo(
+        provider=settings.llm_provider,
+        model=services.llm.model_name,
+        effort=settings.llm_effort if settings.llm_provider == "claude" else None,
     )
 
 

@@ -49,6 +49,12 @@ export interface QuestionsPage {
   offset: number
 }
 
+export interface LLMInfo {
+  provider: 'ollama' | 'claude'
+  model: string
+  effort: string | null
+}
+
 export type Readiness = { status: 'ready' } | { status: 'unavailable'; failed: string[] }
 
 export class ApiError extends Error {
@@ -95,6 +101,8 @@ export const api = {
     }
     return (await response.json()) as Readiness
   },
+
+  llm: () => request<LLMInfo>('/llm'),
 
   listDocuments: () => request<DocumentOut[]>('/documents'),
 

@@ -22,6 +22,14 @@ class DocumentOut(BaseModel):
     created_at: datetime
 
 
+class LLMInfo(BaseModel):
+    """Qual LLM responde as perguntas. Nunca inclui a chave."""
+
+    provider: str
+    model: str
+    effort: str | None  # só o Claude tem esforço
+
+
 class AskRequest(BaseModel):
     question: str
     document_ids: list[UUID] | None = None

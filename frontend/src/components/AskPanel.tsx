@@ -1,9 +1,22 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { api, type AskResponse, type DocumentOut } from '../api'
+import { api, type AskResponse, type DocumentOut, type LLMInfo } from '../api'
 import { errorMessage, formatSeconds } from '../format'
 import { SourceList } from './SourceList'
 
 const MAX_CHARS = 2000
+
+const EFFORT_LABELS: Record<string, string> = {
+  low: 'baixo',
+  medium: 'médio',
+  high: 'alto',
+  xhigh: 'muito alto',
+  max: 'máximo',
+}
+
+function llmLabel(llm: LLMInfo): string {
+  if (!llm.effort) return `Modelo: ${llm.model} (local)`
+  return `Modelo: ${llm.model} · Esforço: ${EFFORT_LABELS[llm.effort] ?? llm.effort}`
+}
 
 interface Props {
   selectedDocuments: DocumentOut[]
@@ -17,6 +30,15 @@ export function AskPanel({ selectedDocuments, hasReadyDocuments }: Props) {
   const [elapsed, setElapsed] = useState(0)
   const [result, setResult] = useState<{ question: string; response: AskResponse } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [llm, setLlm] = useState<LLMInfo | null>(null)
+
+  // A configuração do LLM só muda quando a API reinicia: basta buscar uma vez.
+  useEffect(() => {
+    api
+      .llm()
+      .then(setLlm)
+      .catch(() => setLlm(null))
+  }, [])
 
   // Modelos locais podem levar dezenas de segundos; mostrar o tempo tranquiliza.
   useEffect(() => {
@@ -72,6 +94,14 @@ export function AskPanel({ selectedDocuments, hasReadyDocuments }: Props) {
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
             <span>{scope}</span>
+            {llm && (
+              <span
+                className="rounded bg-indigo-50 px-1.5 py-0.5 font-medium text-indigo-700"
+                title="Definido no servidor (LLM_MODEL e LLM_EFFORT)"
+              >
+                {llmLabel(llm)}
+              </span>
+            )}
             <label className="flex items-center gap-1.5" title="Quantos trechos recuperar (1 a 10)">
               Trechos
               <input
