@@ -82,6 +82,45 @@
 - [FastAPI: Security](https://fastapi.tiangolo.com/tutorial/security/) e o tutorial [OAuth2 com JWT](https://fastapi.tiangolo.com/tutorial/security/oauth2-jwt/)
   As ferramentas de `fastapi.security` e o fluxo de login com hash de senha. Usar para: aula 0011.
 
+### AWS e Terraform (etapa 10)
+
+- [Terraform: State](https://developer.hashicorp.com/terraform/language/state)
+  Para que serve o *state*, o `terraform.tfstate` local e por que usar um backend remoto. Usar para: aulas 0011 e 0012.
+- [Terraform: Manage sensitive data](https://developer.hashicorp.com/terraform/language/manage-sensitive-data)
+  O *state* e o *plan* guardam segredos em texto puro; valores *ephemeral* e argumentos *write-only*. Usar para: o porquê do `aws ssm put-parameter` à mão.
+- [Terraform: Backend S3](https://developer.hashicorp.com/terraform/language/backend/s3)
+  `bucket`, `key`, `region`, `use_lockfile` (trava `.tflock` no S3), `encrypt`, permissões mínimas no bucket; trava pelo DynamoDB obsoleta; versionamento recomendado. Usar para: aula 0012.
+- [Terraform: Install](https://developer.hashicorp.com/terraform/install) e [releases](https://releases.hashicorp.com/terraform/)
+  Zip para Windows (AMD64) com `SHA256SUMS`; sem winget ou Chocolatey na página oficial. Última estável em 13/11/2026: 1.17.2. Usar para: instalar e atualizar.
+- [Registry: hashicorp/aws](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
+  Documentação de cada recurso e a versão atual (6.73.0 em 11/11/2026). Usar para: aulas 0012 a 0014, forma de cada recurso.
+- [AWS Sign-In: Sign in through the AWS CLI](https://docs.aws.amazon.com/signin/latest/userguide/command-line-sign-in.html)
+  `aws login` (CLI ≥ 2.32.0, até 12 h, `SignInLocalDevelopmentAccess`, `--profile`, `aws logout`) e o `aws sso login`. Usar para: credencial local sem access key.
+- [IAM: Root user best practices](https://docs.aws.amazon.com/IAM/latest/UserGuide/root-user-best-practices.html)
+  MFA no root, sem access key do root, root só para tarefa de root. Usar para: aula 0011.
+- [Enable IAM Identity Center](https://docs.aws.amazon.com/singlesignon/latest/userguide/enable-identity-center.html)
+  Instância de organização × de conta; numa conta do plano gratuito, criar a Organization passa a conta para o pago e os créditos expiram. Usar para: o porquê de usar IAM com `aws login`.
+- [EC2: Track your Free Tier usage](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-free-tier-usage.html) e [AWS Free Tier](https://aws.amazon.com/free/)
+  Tipos elegíveis para contas a partir de 15/07/2025, créditos, 6 meses, comando `describe-instance-types` com o filtro `free-tier-eligible`. Usar para: escolher a instância (aula 0013).
+- [Supported services for Sign up for AWS (new)](https://docs.aws.amazon.com/accounts/latest/reference/supported-services-sign-up-new.html)
+  Serviços liberados na experiência nova com *projects* (EC2, S3, SSM, IAM, Budgets sim; Identity Center e Organizations não). Usar para: se a conta foi criada por esse caminho.
+- [AWS Budgets: Create a budget](https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-create.html) e [Budgets pricing](https://aws.amazon.com/aws-cost-management/aws-budgets/pricing/)
+  Modelo simplificado × personalizado; monitorar e notificar é grátis, ações de budget têm cota grátis. Usar para: aulas 0011 e 0014 (`import`).
+- [EC2: How stop and start works](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/how-ec2-instance-stop-start-works.html)
+  Parada não cobra uso, o EBS continua cobrando, o IPv4 automático é devolvido no `stop`. Usar para: rotina de desligar.
+- [VPC pricing](https://aws.amazon.com/vpc/pricing/) e [EBS pricing](https://aws.amazon.com/ebs/pricing/)
+  IPv4 público a US$ 0,005/h; gp3 com 3.000 IOPS e 125 MB/s incluídos. Usar para: tabela de custos.
+- [Vantage: t3.medium](https://instances.vantage.sh/aws/ec2/t3.medium?region=us-east-1)
+  Preço por hora quando a tabela oficial da AWS não carrega em texto (US$ 0,0416/h em 13/11/2026). Fonte não oficial: confirme na [Calculator](https://calculator.aws/).
+- [Systems Manager pricing](https://aws.amazon.com/systems-manager/pricing/)
+  Session Manager grátis em EC2; parâmetros padrão do Parameter Store grátis. Usar para: aulas 0013 e 0014.
+- [Session Manager plugin no Windows](https://docs.aws.amazon.com/systems-manager/latest/userguide/install-plugin-windows.html) e [verificação](https://docs.aws.amazon.com/systems-manager/latest/userguide/install-plugin-verify.html)
+  Instalador `.exe`, pasta padrão, só PowerShell e cmd, mensagem esperada. Usar para: aula 0011.
+- [AWS CLI: Install](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html)
+  `msiexec.exe /i https://awscli.amazonaws.com/AWSCLIV2.msi` e `aws --version`. Usar para: aula 0011.
+- [Classmethod: Terraform S3 backend com aws login](https://dev.classmethod.jp/articles/terraform-s3-backend-aws-login/) e a [issue #45316](https://github.com/hashicorp/terraform-provider-aws/issues/45316)
+  Testou: provider ≥ 6.23.0 e Terraform ≥ 1.15.0 leem o `login_session`. Fonte não oficial. Usar para: se o `init` não achar credencial.
+
 ## Sabedoria (comunidades)
 
 - [GitHub Community: discussões de Actions](https://github.com/orgs/community/discussions/categories/actions)
@@ -104,4 +143,8 @@
 - A página do Container registry diz que imagens públicas podem ser baixadas anonimamente, mas também que é preciso token para "instalar" pacotes públicos. Testar o `docker pull` sem login na etapa 8.
 - A página de Rate limits da Anthropic não diz se os alertas de gasto do workspace chegam por e-mail nem a quem. Conferir na tela, na aula 0009.
 - A estimativa de custo por pergunta (aula 0009) não inclui os tokens de raciocínio do modelo: medir com o `usage` real na aula 0010.
+- Se o AWS Budgets conta o gasto **antes** ou **depois** dos créditos do plano gratuito. Com créditos, um alerta de custo pode nunca disparar. Conferir nas opções do budget (aula 0011).
+- Se o plano gratuito **recusa** lançar um tipo não elegível (como o `t3.medium`) ou só cobra dos créditos. A página diz "You can't exceed your Free Tier limits", sem detalhar. Conferir na aula 0013.
+- Documentação oficial da HashiCorp sobre a versão mínima do Terraform e do provider que leem o `aws login`: só achei fonte de terceiros.
+- Os preços exatos de gp3 e S3 Standard em `us-east-1`: as páginas oficiais carregam a tabela por script. Conferir na Calculator.
 - [GitHub Status](https://www.githubstatus.com): primeiro lugar a olhar quando os checks ficam presos em *Queued* sem log (foi um incidente do Actions no PR #6).

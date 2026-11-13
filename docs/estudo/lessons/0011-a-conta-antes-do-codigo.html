@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A conta antes do código</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Aula 0011 · Etapa 10 do <a href="../../pipeline-plano.md">pipeline-plano</a> · ~60 min</p>
+  <h1>A conta antes do código</h1>
+  <p class="subtitle">Primeiro o alerta de gastos, depois o root trancado e uma credencial que expira sozinha. O Terraform só entra quando a conta estiver segura.</p>
+</header>
+
+<div class="note">
+  <p><strong>Fontes conferidas em 13/11/2026.</strong> Terraform <strong>1.17.2</strong>, provider <code>hashicorp/aws</code> <strong>6.73.0</strong> (publicado em 11/11), AWS CLI v2 (o <code>aws login</code> exige a 2.32.0 ou mais nova). Os preços são de <code>us-east-1</code>. Preço e regra do plano gratuito mudam: confira de novo antes de subir a máquina.</p>
+</div>
+
+<h2>O plano da etapa 10</h2>
+
+<p>A sugestão era de três aulas. Virou quatro, porque a primeira juntava cliques no console, três instalações e o primeiro HCL, e isso não cabe numa sessão. Cada aula termina com uma prova.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Aula</th><th>Conteúdo</th><th>Prova</th></tr>
+  <tr><td><strong>0011</strong> (esta)</td><td>Plano da conta, root com MFA, alerta do Budgets, usuário IAM com MFA e <code>aws login</code>, CLI, Terraform e plugin do Session Manager</td><td><code>sts get-caller-identity</code> mostra o usuário, e não o root. As três ferramentas respondem.</td></tr>
+  <tr><td>0012</td><td>Bucket do <em>state</em> à mão, backend S3 com <code>use_lockfile</code>, <code>.gitignore</code> do Terraform e o primeiro ciclo <code>init</code> → <code>plan</code> → <code>apply</code> → <code>destroy</code> com um recurso grátis</td><td>O <code>destroy</code> deixa a conta como estava</td></tr>
+  <tr><td>0013</td><td>EC2, security group sem entrada, role e <em>instance profile</em> do SSM, <code>user_data</code>, túnel até a interface, RAM medida</td><td>Interface pelo túnel; <code>nmap</code> de fora sem porta aberta</td></tr>
+  <tr><td>0014</td><td>OIDC do GitHub e role mínima, Parameter Store, <code>import</code> do Budget, portão de IaC na CI</td><td>PR abrindo a porta 22 é barrado</td></tr>
+</table>
+</div>
+
+<h2>Aquecimento: de memória</h2>
+<p>Sem abrir nada: qual é o teto de gastos na Anthropic, em quais dois lugares do Console ele está, e o que a API devolve quando ele estoura (registro 0012)? E da aula 0008: por que o EC2 vai conseguir baixar a imagem do GHCR sem login? Depois, confira no <a href="../learning-records/0012-teto-de-gastos-e-sonnet-5-fixo.md">registro 0012</a> e na <a href="0008-publicar-no-ghcr.html">aula 0008</a>.</p>
+
+<h2>Por que código, num ambiente que vai morrer?</h2>
+
+<p>Justamente porque vai morrer. Na etapa 15, um <code>terraform destroy</code> apaga tudo o que o Terraform criou. Recurso criado à mão no console fica esquecido e continua cobrando. Por isso, a regra da etapa é: <strong>o que custa dinheiro nasce pelo Terraform</strong>. À mão, só o que vem antes dele (esta aula e o bucket do <em>state</em> na 0012).</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Peça</th><th>O que é</th><th>No EduRAG</th></tr>
+  <tr><td><strong>Provider</strong></td><td>O plugin que fala com a API de um serviço</td><td><code>hashicorp/aws</code>, fixado por versão</td></tr>
+  <tr><td><strong>Resource</strong></td><td>Um objeto real que o Terraform cria e acompanha</td><td>EC2, security group, role…</td></tr>
+  <tr><td><strong>State</strong></td><td>O mapa entre o código e o que existe na conta</td><td>Um arquivo no S3, nunca no git</td></tr>
+  <tr><td><strong><code>plan</code></strong></td><td>Compara código, <em>state</em> e conta, e mostra o que <em>mudaria</em></td><td>Você lê antes de todo <code>apply</code></td></tr>
+  <tr><td><strong><code>apply</code> / <code>destroy</code></strong></td><td>Executa a mudança / apaga tudo o que está no <em>state</em></td><td><code>destroy</code> quando não estiver estudando</td></tr>
+</table>
+</div>
+
+<p>O <em>state</em> é o que liga cada objeto real ao seu bloco no código. Por padrão, ele fica num arquivo local chamado <code>terraform.tfstate</code>, e a documentação desaconselha esse arquivo local para quem trabalha com outras pessoas ou máquinas.<span class="source"> (<a href="https://developer.hashicorp.com/terraform/language/state">Terraform: State</a>)</span> No EduRAG, a CI da aula 0014 é a "outra máquina". E o <em>state</em> é <strong>sensível</strong>: "o Terraform guarda o <em>state</em> num arquivo de texto puro, que inclui qualquer valor secreto definido na configuração".<span class="source"> (<a href="https://developer.hashicorp.com/terraform/language/manage-sensitive-data">Terraform: Manage sensitive data</a>)</span> Daí a regra da trilha: a chave do Claude e as senhas vão para o Parameter Store pelo <code>aws ssm put-parameter</code>, à mão, e nunca entram num recurso.</p>
+
+<h2>Custo primeiro: o que a etapa 10 vai cobrar</h2>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Recurso</th><th>Aula</th><th>US$/hora</th><th>US$/mês ligado (730 h)</th></tr>
+  <tr><td>Alertas do AWS Budgets</td><td>0011</td><td>—</td><td>0</td></tr>
+  <tr><td>Bucket S3 do <em>state</em></td><td>0012</td><td>—</td><td>centavos: o <em>state</em> tem poucos KB</td></tr>
+  <tr><td>EC2 <code>t3.medium</code> (2 vCPU, 4 GiB)</td><td>0013</td><td>0,0416</td><td>30,37</td></tr>
+  <tr><td>IPv4 público</td><td>0013</td><td>0,005</td><td>3,65</td></tr>
+  <tr><td>Disco EBS gp3, 20 GB</td><td>0013</td><td>—</td><td>~1,60</td></tr>
+  <tr><td>Session Manager e Parameter Store (padrão)</td><td>0013–14</td><td>—</td><td>0</td></tr>
+</table>
+</div>
+<p class="source">Fontes: <a href="https://instances.vantage.sh/aws/ec2/t3.medium?region=us-east-1">t3.medium em us-east-1</a> (a tabela oficial da <a href="https://aws.amazon.com/ec2/pricing/on-demand/">AWS</a> é dinâmica; confira lá ou na <a href="https://calculator.aws/">Calculator</a>) · <a href="https://aws.amazon.com/vpc/pricing/">VPC: IPv4 público</a> · <a href="https://aws.amazon.com/ebs/pricing/">EBS</a> (a página usa US$ 0,08/GB-mês como exemplo; confira na Calculator) · <a href="https://aws.amazon.com/systems-manager/pricing/">Systems Manager</a> · <a href="https://aws.amazon.com/aws-cost-management/aws-budgets/pricing/">Budgets</a></p>
+
+<p>A instância <strong>parada</strong> (<code>stop</code>) não cobra hora de uso, mas o disco EBS continua cobrando. O IPv4 público automático é devolvido no <code>stop</code>, e um novo vem no <code>start</code>.<span class="source"> (<a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/how-ec2-instance-stop-start-works.html">EC2: How stop and start works</a>)</span> Então a conta de quem estuda 8 horas por dia, 30 dias, é: 240 h × 0,0416 + 240 h × 0,005 + 1,60 ≈ <strong>US$ 12,80</strong>. Ligada o mês todo, ≈ US$ 35,60.</p>
+
+<p><strong>Aposte:</strong> se você esquecer a máquina ligada num fim de semana, quanto custa? E se der <code>terraform destroy</code> na sexta, o que ainda cobra na segunda?</p>
+<details>
+  <summary>Resposta</summary>
+  <p>Sexta 18h a segunda 8h são 62 h: 62 × (0,0416 + 0,005) ≈ <strong>US$ 2,90</strong>. Depois do <code>destroy</code>, só sobra o que ficou fora do Terraform: o bucket do <em>state</em> (centavos) e o Budget (grátis). Esse é o motivo de quase tudo nascer pelo Terraform.</p>
+</details>
+
+<h2>Decisão: qual é o plano da sua conta?</h2>
+
+<p>Contas criadas a partir de 15/07/2025 escolhem entre o plano <strong>gratuito</strong> e o <strong>pago</strong>. O gratuito dá até US$ 200 em créditos e dura 6 meses ou até os créditos acabarem, o que vier primeiro. Ele não deixa passar do limite.<span class="source"> (<a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-free-tier-usage.html">EC2: Free Tier usage</a> · <a href="https://aws.amazon.com/free/">AWS Free Tier</a>)</span> Isso muda duas coisas nesta etapa:</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th></th><th>Plano gratuito</th><th>Plano pago</th></tr>
+  <tr><td>IAM Identity Center</td><td>Ativar a instância de organização <strong>cria uma AWS Organization</strong>. Isso passa a conta para o plano pago, e os créditos expiram na hora.</td><td>Funciona, mas cria uma Organization só para uma pessoa.</td></tr>
+  <tr><td>Tipo da instância</td><td>Só os elegíveis: <code>t3.micro</code>, <code>t3.small</code>, <code>t4g.micro</code>, <code>t4g.small</code>, <code>c7i-flex.large</code>, <code>m7i-flex.large</code>. O <code>t3.medium</code> do plano <strong>não está na lista</strong>.</td><td>Qualquer tipo, pagando.</td></tr>
+</table>
+</div>
+<p class="source">Fontes: <a href="https://docs.aws.amazon.com/singlesignon/latest/userguide/enable-identity-center.html">Enable IAM Identity Center</a> ("If you use a free tier account, creating an AWS organization automatically upgrades your account to a paid plan… Your free tier credits expire immediately.") · <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-free-tier-usage.html">EC2: Free Tier usage</a></p>
+
+<p><strong>Recomendo, nos dois planos: usuário IAM com MFA e <code>aws login</code>, sem Identity Center.</strong> O <code>aws login</code> usa o seu login do console para entregar credenciais temporárias, válidas por até 12 horas, sem access key no disco. A documentação o chama de método recomendado para quem usa root ou usuário IAM.<span class="source"> (<a href="https://docs.aws.amazon.com/signin/latest/userguide/command-line-sign-in.html">AWS Sign-In: Sign in through the AWS CLI</a>)</span> O Identity Center é o padrão de empresas com várias contas. Aqui ele não traz ganho, e no plano gratuito custaria os créditos. A troca da instância (<code>t3.medium</code> × <code>m7i-flex.large</code>, que é elegível) fica para a aula 0013, com a RAM medida.</p>
+
+<div class="note">
+  <p><strong>Se a sua conta foi criada pelo "Sign up for AWS (new)", com <em>projects</em>:</strong> pare e me conte antes de seguir. Nessa experiência, a AWS gerencia políticas da conta, e o Identity Center e o Organizations ficam de fora.<span class="source"> (<a href="https://docs.aws.amazon.com/accounts/latest/reference/supported-services-sign-up-new.html">Supported services for Sign up for AWS (new)</a>)</span></p>
+</div>
+
+<h2>Que permissão dar ao seu usuário?</h2>
+
+<p>Nas aulas 0012 a 0014, o seu usuário vai criar bucket, EC2, roles, <em>instance profile</em> e o provedor OIDC. A política gerenciada <code>PowerUserAccess</code> não serve, porque não gerencia o IAM, e roles fazem parte do IAM. Por isso, o usuário do dia a dia recebe <code>AdministratorAccess</code> e, para o <code>aws login</code>, a <code>SignInLocalDevelopmentAccess</code>.<span class="source"> (<a href="https://docs.aws.amazon.com/signin/latest/userguide/command-line-sign-in.html">AWS Sign-In</a>)</span></p>
+
+<p>Isso contradiz o menor privilégio? Não, porque a conta inteira é sua e o usuário existe para administrá-la. O que segura o risco é o MFA e a credencial que expira. O menor privilégio de verdade vale para as <strong>identidades de máquina</strong>, a instância e a CI, e é escrito por você nas aulas 0013 e 0014. O root fica para as tarefas que só ele faz, sempre com MFA e <strong>sem access key</strong>.<span class="source"> (<a href="https://docs.aws.amazon.com/IAM/latest/UserGuide/root-user-best-practices.html">IAM: Root user best practices</a>)</span></p>
+
+<h2>Mão na massa</h2>
+
+<p>Sem esqueleto: hoje não há HCL. São cliques no console e instalações. Anote o que você escolher; o nome do Budget volta na aula 0014.</p>
+
+<ol class="checklist" data-key="0011-conta">
+  <li><strong>Plano da conta:</strong> entre como root e veja, na área de Billing, se a conta está no plano gratuito (com créditos) ou no pago. Se não tiver conta, crie uma, e no cadastro anote qual plano escolheu.</li>
+  <li><strong>Root:</strong> em <em>Security credentials</em>, registre um MFA (chave de acesso ou app autenticador). Na mesma tela, confira que <strong>não</strong> há access key do root. Se houver, apague.<span class="source"> (<a href="https://docs.aws.amazon.com/IAM/latest/UserGuide/root-user-best-practices.html">Root user best practices</a>)</span></li>
+  <li><strong>Budget, antes de qualquer recurso:</strong> <em>Billing and Cost Management → Budgets → Create budget</em>, modelo <em>Monthly cost budget</em>. Nome <code>edurag-mensal</code>, valor <strong>US$ 15</strong> (a conta de 8 h/dia acima, com folga), seu e-mail. Confira na tela quais alertas o modelo criou (real e previsto) e em que percentuais.<span class="source"> (<a href="https://docs.aws.amazon.com/cost-management/latest/userguide/budgets-create.html">AWS Budgets: Create a budget</a>)</span></li>
+  <li><strong>Usuário IAM:</strong> <em>IAM → Users → Create user</em>, com acesso ao console e senha própria. Políticas: <code>AdministratorAccess</code> e <code>SignInLocalDevelopmentAccess</code>. <strong>Não</strong> crie access key. Depois, em <em>Security credentials</em> do usuário, registre o MFA.</li>
+  <li><strong>Teste o usuário:</strong> saia do root e entre pela URL de login da conta com o usuário novo e o MFA. Daqui para frente, o root só volta para tarefa de root.</li>
+  <li><strong>AWS CLI v2</strong> (PowerShell como administrador): <code>msiexec.exe /i https://awscli.amazonaws.com/AWSCLIV2.msi</code>. Feche e reabra o terminal. <code>aws --version</code> precisa mostrar <code>aws-cli/2.32.0</code> ou mais nova.<span class="source"> (<a href="https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html">AWS CLI: Install</a>)</span></li>
+  <li><strong>Perfil e login:</strong> <code>aws configure set region us-east-1 --profile edurag</code>, depois <code>aws login --profile edurag</code>. O navegador abre; entre com o usuário IAM, e não com o root.</li>
+  <li><strong>A prova da identidade:</strong> <code>aws sts get-caller-identity --profile edurag</code>. O <code>Arn</code> precisa terminar em <code>:user/&lt;seu-usuário&gt;</code>. Se terminar em <code>:root</code>, você entrou com o root: <code>aws logout --profile edurag</code> e repita.</li>
+  <li><strong>Terraform 1.17.2:</strong> em <a href="https://releases.hashicorp.com/terraform/1.17.2/">releases.hashicorp.com/terraform/1.17.2</a>, baixe o <code>terraform_1.17.2_windows_amd64.zip</code> e o <code>terraform_1.17.2_SHA256SUMS</code>. Compare o <code>Get-FileHash .\terraform_1.17.2_windows_amd64.zip</code> com a linha <code>windows_amd64</code> do arquivo de somas. Os dois têm que ser iguais. Extraia o <code>terraform.exe</code> numa pasta sua (por exemplo <code>C:\tools\terraform</code>) e acrescente essa pasta ao <code>Path</code> do usuário (<em>Variáveis de ambiente</em>). Reabra o terminal: <code>terraform version</code>.<span class="source"> (<a href="https://developer.hashicorp.com/terraform/install">Terraform: Install</a>)</span></li>
+  <li><strong>Plugin do Session Manager:</strong> rode o instalador <code>SessionManagerPluginSetup.exe</code> do link oficial e deixe a pasta padrão. Reabra o terminal e rode <code>session-manager-plugin</code>. A resposta esperada é "The Session Manager plugin is installed successfully. Use the AWS CLI to start a session."<span class="source"> (<a href="https://docs.aws.amazon.com/systems-manager/latest/userguide/install-plugin-windows.html">Install on Windows</a> · <a href="https://docs.aws.amazon.com/systems-manager/latest/userguide/install-plugin-verify.html">Verify</a>)</span></li>
+  <li><strong>Nada no repositório:</strong> <code>git status</code> limpo. Credenciais do <code>aws login</code> ficam no cache da CLI, no seu perfil do Windows, fora do projeto.</li>
+</ol>
+
+<div class="note">
+  <p><strong>Para o Terraform ler o <code>aws login</code></strong> (aula 0012): nas pastas do projeto, use <code>$env:AWS_PROFILE = "edurag"</code> na sessão do PowerShell. Um artigo da Classmethod testou que o provider lê essa credencial a partir da <strong>6.23.0</strong> e o backend S3 a partir do Terraform <strong>1.15.0</strong>. As versões de hoje passam das duas. Essa fonte não é oficial: se o <code>init</code> der "No valid credential sources found", me chame.<span class="source"> (<a href="https://dev.classmethod.jp/articles/terraform-s3-backend-aws-login/">Classmethod: S3 backend e aws login</a> · <a href="https://github.com/hashicorp/terraform-provider-aws/issues/45316">provider-aws #45316</a>)</span></p>
+</div>
+
+<h2>Me conte</h2>
+<ul>
+  <li>O plano da conta (gratuito ou pago) e, se gratuito, quanto de crédito aparece.</li>
+  <li>A saída do <code>sts get-caller-identity</code> (pode mascarar o número da conta).</li>
+  <li>Os alertas que o modelo do Budget criou, com os percentuais.</li>
+  <li>As três versões: <code>aws --version</code>, <code>terraform version</code> e a resposta do plugin.</li>
+</ul>
+<p>Com isso, eu escrevo o registro de aprendizagem e preparo a 0012.</p>
+
+<h2>Recupere da memória</h2>
+<p>As perguntas 2, 4 e 6 retomam o registro 0012, o registro 0011 e a aula 0008.</p>
+
+<div class="quiz">
+  <div class="question" data-answer="1">
+    <p class="prompt">1. O que o alerta do AWS Budgets faz quando o gasto passa do valor?</p>
+    <div class="options">
+      <button>Desliga as instâncias e apaga os discos da conta</button>
+      <button>Manda um e-mail; nada é desligado sozinho na conta</button>
+      <button>Bloqueia recursos novos até o mês seguinte chegar</button>
+    </div>
+    <p class="feedback" data-ok="Isso. O alerta só avisa. Quem desliga é você (stop ou destroy)." data-bad="Não. Um alerta de Budget só notifica; ele não para nada. Por isso a rotina de stop e destroy importa."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">2. Na Anthropic, o que acontece quando o teto de gastos estoura?</p>
+    <div class="options">
+      <button>As chamadas falham até o mês virar ou o teto subir</button>
+      <button>O modelo troca sozinho para outro, mais barato</button>
+      <button>A chave é revogada e precisa ser criada de novo</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Diferente do Budgets da AWS, o teto da Anthropic bloqueia: 400 ou 429, e o app devolve 502." data-bad="Não. O teto bloqueia as chamadas: a API devolve erro (400 ou 429) e o app devolve 502. O modelo nunca troca: só claude-sonnet-5."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">3. Por que IAM com aws login, e não o IAM Identity Center?</p>
+    <div class="options">
+      <button>Porque o Identity Center não existe em us-east-1</button>
+      <button>Porque o aws login dispensa o MFA no console</button>
+      <button>Porque criar a organização tira o plano gratuito</button>
+    </div>
+    <p class="feedback" data-ok="Isso. A instância de organização cria uma AWS Organization, e no plano gratuito os créditos expiram na hora." data-bad="Não. O motivo é o plano gratuito: o Identity Center cria uma Organization, que passa a conta para o pago. O MFA continua valendo."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">4. Num vazamento, por que revogar a chave vem antes de apagar o arquivo?</p>
+    <div class="options">
+      <button>Porque o gitleaks só para de alertar depois disso</button>
+      <button>Porque o commit antigo continua público no histórico</button>
+      <button>Porque o GitHub apaga o commit sozinho em um dia</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Até os PRs fechados ficam em refs/pull/N/head, como a auditoria do registro 0011 mostrou." data-bad="Não. Apagar num commit novo não tira a chave dos commits antigos, nem dos refs/pull/N/head. Só revogar a invalida."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">5. Por que a chave do Claude não entra num recurso do Terraform?</p>
+    <div class="options">
+      <button>Porque o state guarda o valor em texto puro</button>
+      <button>Porque o provider da AWS recusa qualquer senha</button>
+      <button>Porque o plan sempre falha com valor sensível</button>
+    </div>
+    <p class="feedback" data-ok="Isso. Por isso o valor vai pelo aws ssm put-parameter, à mão, e o Terraform só dá permissão de leitura." data-bad="Não. O provider aceita e o plan roda; o problema é o state, que guarda tudo em texto puro."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">6. Por que o EC2 vai baixar as imagens do GHCR sem credencial?</p>
+    <div class="options">
+      <button>Porque o EC2 recebe o GITHUB_TOKEN da última run</button>
+      <button>Porque a AWS tem um convênio direto com o GitHub</button>
+      <button>Porque os pacotes do GHCR foram tornados públicos</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Pacote público dispensa login, e por isso o plano dispensou o ECR (registro 0010)." data-bad="Não. O GITHUB_TOKEN morre com a run. O pull anônimo funciona porque os pacotes foram tornados públicos na etapa 8."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">7. Com a instância parada (stopped), o que continua cobrando?</p>
+    <div class="options">
+      <button>A hora da instância, pela metade do preço</button>
+      <button>O disco EBS, mesmo com a máquina desligada</button>
+      <button>O IPv4 público, que fica preso à instância</button>
+    </div>
+    <p class="feedback" data-ok="Isso. Parada, só o disco cobra. O IPv4 automático é devolvido e um novo vem no start." data-bad="Não. Parada não cobra hora, e o IPv4 automático é devolvido no stop. O que fica é o disco EBS."></p>
+  </div>
+</div>
+
+<footer class="lesson">
+  <p><strong>Fonte principal:</strong> <a href="https://docs.aws.amazon.com/IAM/latest/UserGuide/root-user-best-practices.html">Root user best practices</a> (o que fazer com o root) e <a href="https://docs.aws.amazon.com/signin/latest/userguide/command-line-sign-in.html">Sign in through the AWS CLI</a> (o <code>aws login</code>). Para a aula 0012, leia antes a página do <a href="https://developer.hashicorp.com/terraform/language/state">State</a>.</p>
+  <p><strong>Referência rápida:</strong> <a href="../reference/terraform-aws.html">Terraform e AWS</a> · <a href="../reference/glossario.html">Glossário</a>.</p>
+  <p>O <code>aws login</code> não abriu o navegador, o ARN veio com <code>:root</code>, o hash do Terraform não bateu ou o console de Billing negou acesso ao usuário? Pergunte ao Claude no terminal. Ele é o seu professor nesta trilha.</p>
+</footer>
+
+</main>
+<script src="../assets/checklist.js"></script>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

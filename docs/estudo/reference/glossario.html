@@ -22,6 +22,9 @@
 </header>
 
 <dl>
+  <dt>AWS Budgets</dt>
+  <dd>O serviço de alertas de gasto da AWS. Um alerta só manda e-mail quando o gasto real ou o previsto passa do valor; ele não desliga nada. É grátis e vem antes de qualquer recurso. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
+
   <dt>Bypass list</dt>
   <dd>Quem pode ignorar as regras de um ruleset. No <code>protege-main</code>, fica vazia. <span class="seen">Aula <a href="../lessons/0001-protegendo-a-main.html">0001</a></span></dd>
 
@@ -43,6 +46,9 @@
   <dt>Conjunto de regras do Semgrep</dt>
   <dd>Um pacote de regras do registro do Semgrep, como <code>p/default</code>. O Semgrep o chama de <em>ruleset</em>, mas nesta trilha <strong>ruleset</strong> é só o do GitHub. <span class="seen">Aula <a href="../lessons/0003-sast-com-semgrep.html">0003</a></span></dd>
 
+  <dt>Credencial temporária</dt>
+  <dd>Uma credencial da AWS que expira sozinha. O <code>aws login</code> entrega uma válida por até 12 horas, a partir do login no console. É o contrário da access key, que vale até alguém apagá-la. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
+
   <dt>Cooldown</dt>
   <dd>Uma espera mínima, em dias, antes de aceitar uma versão recém-publicada. No uv é o <code>exclude-newer</code>; no Dependabot, a opção <code>cooldown</code>, que só vale para atualizações de versão. <span class="seen">Aula <a href="../lessons/0005-cadeia-de-suprimentos.html">0005</a></span></dd>
 
@@ -61,11 +67,17 @@
   <dt>Fingerprint</dt>
   <dd>A identificação única de um achado do gitleaks (<code>commit:arquivo:regra:linha</code>). É o que vai no <code>.gitleaksignore</code>. <span class="seen">Aula <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
 
+  <dt>IaC (infraestrutura como código)</dt>
+  <dd>Descrever servidores, redes e permissões em arquivos versionados, e não em cliques no console. No EduRAG, é o Terraform em <code>infra/</code>: o que nasce pelo <code>apply</code> some pelo <code>destroy</code>. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
+
   <dt>Imagem base</dt>
   <dd>A imagem do primeiro estágio de um <code>FROM</code> (por exemplo <code>python:3.12-slim</code>). Traz o sistema operacional, e é dele que vêm os pacotes que o <code>trivy image</code> escaneia. <span class="seen">Aula <a href="../lessons/0006-build-e-scan-de-imagens.html">0006</a></span></dd>
 
   <dt>Limite de taxa (rate limiting)</dt>
   <dd>Um máximo de requisições (ou tokens) por intervalo de tempo, por cliente. Protege contra rajadas, mas não contra um gasto lento e constante: para isso existem a cota e o teto de gastos. <span class="seen">Aula <a href="../lessons/0009-antes-de-expor.html">0009</a></span></dd>
+
+  <dt>MFA</dt>
+  <dd>Autenticação multifator: além da senha, uma segunda prova (chave de acesso ou código de app). Obrigatória no root e no usuário IAM da trilha. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
 
   <dt>Menor privilégio</dt>
   <dd>Dar a cada peça só as permissões de que ela precisa. Num workflow, é o bloco <code>permissions</code>. <span class="seen">Aula <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
@@ -82,8 +94,20 @@
   <dt>Não-root</dt>
   <dd>Um contêiner cujo processo roda com um usuário comum (uid diferente de 0). A checagem confiável é executar <code>id -u</code> dentro da imagem: <code>0</code> é root. <span class="seen">Aula <a href="../lessons/0006-build-e-scan-de-imagens.html">0006</a></span></dd>
 
+  <dt>Plan × apply</dt>
+  <dd><code>terraform plan</code> compara o código, o <em>state</em> e a conta, e só mostra o que mudaria. <code>terraform apply</code> executa a mudança. Todo <code>apply</code> começa pela leitura do <code>plan</code>. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
+
+  <dt>Plano gratuito (AWS)</dt>
+  <dd>O plano das contas criadas a partir de 15/07/2025: até US$ 200 em créditos, 6 meses ou até acabarem, sem passar do limite, só com os tipos de instância elegíveis. Criar uma AWS Organization passa a conta para o plano pago. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
+
   <dt>Portão (gate)</dt>
   <dd>Uma verificação que <em>bloqueia</em>, e não só avisa. Uma ferramenta vira portão quando o job dela entra nos checks obrigatórios. <span class="seen">Aulas <a href="../lessons/0001-protegendo-a-main.html">0001</a>, <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
+
+  <dt>Provider (Terraform)</dt>
+  <dd>O plugin que traduz os blocos do Terraform em chamadas à API de um serviço. Aqui, o <code>hashicorp/aws</code>, fixado por versão. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
+
+  <dt>Root (conta da AWS)</dt>
+  <dd>A identidade criada com a conta, com poder total, que as políticas do IAM não limitam. Fica com MFA, sem access key, e só entra para tarefa que só ele faz. O dia a dia é com um usuário IAM. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
 
   <dt>Scope (do cache do Buildx)</dt>
   <dd>O nome do cache de camadas no <code>type=gha</code>. Builds que dividem o mesmo scope sobrescrevem o cache um do outro; use um por imagem. <span class="seen">Aula <a href="../lessons/0006-build-e-scan-de-imagens.html">0006</a></span></dd>
@@ -118,6 +142,12 @@
   <dt>Rollback</dt>
   <dd>Voltar para a versão anterior quando um deploy quebra. Exige que a versão anterior tenha um nome fixo, como a tag por SHA. <span class="seen">Aula <a href="../lessons/0008-publicar-no-ghcr.html">0008</a></span></dd>
 
+  <dt>Session Manager (SSM)</dt>
+  <dd>O serviço da AWS que abre sessão e túnel até uma instância sem SSH e sem porta de entrada: o agente na máquina chama a AWS de dentro para fora. No Windows, precisa do plugin <code>session-manager-plugin</code>. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a> (uso na 0013)</span></dd>
+
+  <dt>State (Terraform)</dt>
+  <dd>O arquivo que liga cada objeto real da conta ao seu bloco no código. É texto puro: valor secreto em recurso vai parar nele. Fica num bucket S3 versionado, nunca no git. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
+
   <dt>Superfície de ataque</dt>
   <dd>Tudo o que um atacante pode tentar explorar: cada pacote, porta e binário a mais. A imagem slim tem menos superfície que a completa. <span class="seen">Aula <a href="../lessons/0006-build-e-scan-de-imagens.html">0006</a></span></dd>
 
@@ -126,6 +156,9 @@
 
   <dt>Teto de gastos (spend limit)</dt>
   <dd>O máximo que a organização ou um workspace pode gastar na API da Anthropic por mês. Ao estourar, as chamadas falham até o mês virar ou o teto subir. É a última camada contra o gasto, porque não depende do código. <span class="seen">Aula <a href="../lessons/0009-antes-de-expor.html">0009</a></span></dd>
+
+  <dt>Usuário IAM</dt>
+  <dd>Uma identidade criada dentro da conta, com permissões dadas por políticas. O da trilha tem MFA e <code>AdministratorAccess</code>, e nenhuma access key: entra na CLI pelo <code>aws login</code>. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
 
   <dt>Varredura de histórico</dt>
   <dd>Uma análise de todos os commits do repositório, e não só dos novos. Feita uma vez, descobre se algo já vazou. <span class="seen">Aula <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
