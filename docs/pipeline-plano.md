@@ -177,13 +177,24 @@ Antes, a base seria feita à mão. Agora ela é **código**: tudo que for criado
 
 **Decidido em 13/11/2026:** região **`us-east-1`**; acesso pelo **túnel do SSM**; **o Rafael escreve todo o Terraform** (e, nas etapas 12 a 14, o Prometheus e o Grafana). As aulas saem do `/teach`, a partir do prompt em [estudo/prompts/etapa-10-terraform.md](estudo/prompts/etapa-10-terraform.md). Numeração: a próxima aula é a **0011** (o número 0010 ficou com o `ClaudeLLM`, feito sem aula em HTML).
 
+*Mapa das aulas (13/11/2026; eram três, viraram quatro para cada uma caber numa sessão):*
+
+| Aula | Conteúdo | Prova |
+| --- | --- | --- |
+| [0011](estudo/lessons/0011-a-conta-antes-do-codigo.html) | Plano da conta, root com MFA, Budget `edurag-mensal`, usuário IAM com MFA e `aws login`, CLI, Terraform e plugin do Session Manager | `sts get-caller-identity` mostra o usuário, não o root; as três ferramentas respondem |
+| 0012 | Bucket do *state* à mão, backend S3 com `use_lockfile`, `.gitignore` do Terraform, primeiro ciclo `init` → `plan` → `apply` → `destroy` com um recurso grátis | O `destroy` deixa a conta como estava |
+| 0013 | EC2, security group sem entrada, role e *instance profile* do SSM, `user_data`, túnel até a interface, RAM medida | Interface pelo túnel; `nmap` de fora sem porta |
+| 0014 | OIDC do GitHub e role mínima, Parameter Store, `import` do Budget, portão de IaC na CI | PR abrindo a porta 22 barrado |
+
+Referência: [Terraform e AWS](estudo/reference/terraform-aws.html).
+
 *Bootstrap (à mão, uma vez, documentado):*
 - [ ] Alerta de orçamento (AWS Budgets) **no primeiro dia**, antes de qualquer recurso. Depois ele entra no Terraform com um bloco `import`: é a primeira aula de `terraform import`.
-- [ ] Root com MFA e guardado; usuário do dia a dia (IAM Identity Center ou IAM) com MFA. Credencial local por `aws sso login` ou perfil, nunca access key no repositório.
+- [ ] Root com MFA, sem access key e guardado; usuário IAM do dia a dia com MFA. Credencial local pelo **`aws login`** (temporária, até 12 h), nunca access key. **Sem IAM Identity Center** (aula 0011): ativá-lo cria uma AWS Organization, que passa uma conta do plano gratuito para o pago e expira os créditos.
 - [ ] Bucket S3 do *state* (versionado, criptografado, bloqueio de acesso público), com trava nativa do S3 (`use_lockfile = true`, sem DynamoDB).
 
 *Terraform (pasta `infra/`, PR `infra/base`):*
-- [ ] EC2 Amazon Linux 2023 (já vem com o agente do SSM) na VPC padrão, com *instance profile* `AmazonSSMManagedInstanceCore`. Tamanho de partida: `t3.medium` (Postgres, API, nginx, Ollama de embeddings, Prometheus e Grafana na mesma máquina); medir a RAM e ajustar. Disco gp3 e `user_data` instalando Docker e o plugin do compose.
+- [ ] EC2 Amazon Linux 2023 (já vem com o agente do SSM) na VPC padrão, com *instance profile* `AmazonSSMManagedInstanceCore`. Tamanho de partida: `t3.medium` (Postgres, API, nginx, Ollama de embeddings, Prometheus e Grafana na mesma máquina); medir a RAM e ajustar. **No plano gratuito, o `t3.medium` não é elegível** (elegíveis: `t3.micro`, `t3.small`, `t4g.micro`, `t4g.small`, `c7i-flex.large`, `m7i-flex.large`); a escolha fica para a aula 0013. Disco gp3 e `user_data` instalando Docker e o plugin do compose.
 - [ ] **Security group sem nenhuma regra de entrada.** Acesso só pelo túnel do SSM (`AWS-StartPortForwardingSession`) para a interface (8080) e o Grafana (3000). **Decidido em 13/11/2026: túnel do SSM**, nenhuma porta aberta.
 - [ ] Provedor **OIDC** do GitHub e uma *role* com permissão mínima: `ssm:SendCommand` só nessa instância e no documento `AWS-RunShellScript`, e leitura do resultado. Condição no `sub`: só a `main` do `rafelms/EduRAG`.
 - [ ] Parâmetros no **SSM Parameter Store** (`SecureString`) para a chave `edurag-prod` do Claude, a senha do Postgres e a senha do Grafana. **O valor é gravado à mão** (`aws ssm put-parameter`); o Terraform só dá à instância permissão de ler esses nomes. Valor de segredo em recurso do Terraform vai parar no *state*.

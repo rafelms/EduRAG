@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terraform e AWS</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Referência · da aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a> · cresce até a 0014</p>
+  <h1>Terraform e AWS</h1>
+  <p class="subtitle">Versões, comandos, custos e armadilhas da etapa 10. Conferido em 13/11/2026.</p>
+</header>
+
+<h2>Versões</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Ferramenta</th><th>Versão</th><th>Observação</th></tr>
+  <tr><td>Terraform</td><td>1.17.2</td><td>Zip para Windows; confira o SHA256</td></tr>
+  <tr><td>Provider <code>hashicorp/aws</code></td><td>6.73.0</td><td>Fixe com <code>required_providers</code></td></tr>
+  <tr><td>AWS CLI v2</td><td>≥ 2.32.0</td><td>Mínimo para o <code>aws login</code></td></tr>
+  <tr><td>Session Manager plugin</td><td>a mais recente</td><td>Só funciona no PowerShell e no cmd</td></tr>
+</table>
+</div>
+
+<h2>Identidade no dia a dia</h2>
+<pre><code>aws configure set region us-east-1 --profile edurag
+aws login --profile edurag                     # credencial de até 12 h
+aws sts get-caller-identity --profile edurag   # Arn termina em :user/...
+$env:AWS_PROFILE = "edurag"                    # para o Terraform, nesta sessão
+aws logout --profile edurag</code></pre>
+<ul>
+  <li>Root: MFA, sem access key, só para tarefa de root.</li>
+  <li>Usuário IAM: MFA, <code>AdministratorAccess</code> + <code>SignInLocalDevelopmentAccess</code>, sem access key.</li>
+  <li>Menor privilégio de verdade: nas identidades de máquina (instância, CI via OIDC).</li>
+</ul>
+
+<h2>O ciclo do Terraform</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Comando</th><th>O que faz</th><th>Muda a conta?</th></tr>
+  <tr><td><code>terraform init</code></td><td>Baixa o provider e liga o backend</td><td>Não</td></tr>
+  <tr><td><code>terraform fmt</code> / <code>fmt -check</code></td><td>Formata / só confere a formatação (CI)</td><td>Não</td></tr>
+  <tr><td><code>terraform validate</code></td><td>Confere a sintaxe e os tipos. Na CI: <code>init -backend=false</code> antes</td><td>Não</td></tr>
+  <tr><td><code>terraform plan</code></td><td>Mostra o que mudaria. <strong>Leia sempre</strong></td><td>Não</td></tr>
+  <tr><td><code>terraform apply</code></td><td>Executa o plano, depois de você digitar <code>yes</code></td><td><strong>Sim</strong></td></tr>
+  <tr><td><code>terraform destroy</code></td><td>Apaga tudo o que está no <em>state</em></td><td><strong>Sim</strong></td></tr>
+  <tr><td><code>terraform state list</code></td><td>Lista o que o <em>state</em> acompanha</td><td>Não</td></tr>
+</table>
+</div>
+
+<h2>State</h2>
+<ul>
+  <li>Liga cada objeto real ao seu bloco no código. Local por padrão (<code>terraform.tfstate</code>); aqui, no S3.</li>
+  <li>É <strong>texto puro</strong>: valor de segredo em recurso vai parar nele. Segredo entra no Parameter Store por <code>aws ssm put-parameter</code>, à mão.</li>
+  <li>Backend S3: <code>bucket</code>, <code>key</code>, <code>region</code>, <code>use_lockfile = true</code> (a trava é um objeto <code>&lt;key&gt;.tflock</code>), <code>encrypt</code>. A trava pelo DynamoDB está <strong>obsoleta</strong>.</li>
+  <li>Bucket do <em>state</em>: versionamento ligado (recupera um <em>state</em> estragado), criptografia, bloqueio de acesso público.</li>
+</ul>
+
+<h2>Custos em us-east-1</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Recurso</th><th>US$/hora</th><th>US$/mês (730 h)</th><th>Parado (<code>stop</code>)</th></tr>
+  <tr><td>EC2 <code>t3.medium</code></td><td>0,0416</td><td>30,37</td><td>0</td></tr>
+  <tr><td>IPv4 público</td><td>0,005</td><td>3,65</td><td>0 (devolvido no <code>stop</code>)</td></tr>
+  <tr><td>EBS gp3 20 GB</td><td>—</td><td>~1,60</td><td>continua cobrando</td></tr>
+  <tr><td>S3 do <em>state</em></td><td>—</td><td>centavos</td><td>—</td></tr>
+  <tr><td>Budgets (alertas), Session Manager no EC2, Parameter Store padrão</td><td>—</td><td>0</td><td>—</td></tr>
+</table>
+</div>
+<p>Estudo de 8 h/dia por 30 dias ≈ US$ 12,80. Budget <code>edurag-mensal</code>: US$ 15.</p>
+
+<h2>Desligar quando não estiver estudando</h2>
+<pre><code>aws ec2 stop-instances --instance-ids &lt;id&gt; --profile edurag    # pausa: só o disco cobra
+aws ec2 start-instances --instance-ids &lt;id&gt; --profile edurag   # volta com IPv4 novo
+terraform destroy                                              # some tudo o que é do Terraform</code></pre>
+
+<h2>Armadilhas</h2>
+<ul>
+  <li><strong>Identity Center no plano gratuito:</strong> a instância de organização cria uma AWS Organization. A conta vira paga e os créditos expiram na hora.</li>
+  <li><strong>Plano gratuito e tipo de instância:</strong> só os elegíveis (<code>t3.micro</code>, <code>t3.small</code>, <code>t4g.micro</code>, <code>t4g.small</code>, <code>c7i-flex.large</code>, <code>m7i-flex.large</code>). Listar: <code>aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true --query "InstanceTypes[*].InstanceType" --output text</code>.</li>
+  <li><strong>Alerta não desliga nada:</strong> o Budget só manda e-mail. O teto da Anthropic, ao contrário, bloqueia.</li>
+  <li><strong><code>credential_process</code> no perfil <code>default</code></strong> impede o <code>aws login</code> nesse perfil. Use um perfil com nome (<code>edurag</code>).</li>
+  <li><strong>Terraform lendo o <code>aws login</code>:</strong> provider ≥ 6.23.0 e Terraform ≥ 1.15.0 (fonte não oficial). Erro típico: "No valid credential sources found".</li>
+  <li><strong>Elastic IP</strong> cobra mesmo com a instância parada. O EduRAG não usa.</li>
+  <li><strong><code>.tfstate</code>, <code>.terraform/</code> e <code>*.tfvars</code> fora do git:</strong> o <code>.gitignore</code> ainda não tem essas linhas (aula 0012).</li>
+</ul>
+
+<p class="source">Fontes: <a href="https://developer.hashicorp.com/terraform/language/state">Terraform: State</a> · <a href="https://developer.hashicorp.com/terraform/language/backend/s3">Backend S3</a> · <a href="https://developer.hashicorp.com/terraform/language/manage-sensitive-data">Sensitive data</a> · <a href="https://docs.aws.amazon.com/signin/latest/userguide/command-line-sign-in.html">aws login</a> · <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/how-ec2-instance-stop-start-works.html">EC2 stop/start</a> · <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-free-tier-usage.html">EC2 Free Tier</a> · <a href="https://docs.aws.amazon.com/singlesignon/latest/userguide/enable-identity-center.html">Identity Center</a> · <a href="https://aws.amazon.com/vpc/pricing/">VPC pricing</a></p>
+
+<p><a href="glossario.html">Glossário</a> · <a href="publicacao-ghcr.html">Publicação no GHCR</a> · <a href="exposicao-segura.html">Exposição segura</a></p>
+
+</main>
+</body>
+</html>
