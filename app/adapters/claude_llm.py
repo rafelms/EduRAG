@@ -19,6 +19,7 @@ class ClaudeLLM(LLMPort):
         model: str,
         timeout: float = 60.0,
         max_tokens: int = 1024,
+        effort: str = "medium",
         client: Any = None,
     ) -> None:
         # A config já valida; repetir aqui protege quem montar o adaptador direto.
@@ -26,6 +27,7 @@ class ClaudeLLM(LLMPort):
             raise ValueError(f"modelo não permitido: {model!r}")
         self._model = model
         self._max_tokens = max_tokens
+        self._effort = effort
         # api_key explícita: sem ela, o SDK cairia em outras credenciais da máquina
         # (perfil do `ant auth login`, por exemplo). max_retries=1 porque o teto de
         # gastos não se resolve repetindo.
@@ -45,6 +47,7 @@ class ClaudeLLM(LLMPort):
                 # RAG com contexto fechado: sem raciocínio estendido, que seria cobrado
                 # como saída. Sem `fallbacks`: um fallback trocaria de modelo.
                 thinking={"type": "disabled"},
+                output_config={"effort": self._effort},
                 messages=[{"role": "user", "content": prompt}],
             )
         except (anthropic.APIStatusError, anthropic.APIConnectionError) as exc:
@@ -56,6 +59,7 @@ class ClaudeLLM(LLMPort):
             "chamada ao claude",
             extra={
                 "model": self._model,
+                "effort": self._effort,
                 "input_tokens": usage.input_tokens,
                 "output_tokens": usage.output_tokens,
                 "stop_reason": response.stop_reason,

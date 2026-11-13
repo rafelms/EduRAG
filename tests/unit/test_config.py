@@ -50,6 +50,26 @@ def test_modelo_vem_do_ambiente(monkeypatch):
         Settings()
 
 
+def test_effort_padrao_e_medium_e_vem_do_ambiente(monkeypatch):
+    assert Settings().llm_effort == "medium"
+
+    monkeypatch.setenv("LLM_EFFORT", "high")
+    settings = Settings(
+        llm_provider="claude", llm_model="claude-sonnet-5", anthropic_api_key="chave-falsa"
+    )
+
+    assert settings.llm_effort == "high"
+    assert build_llm(settings)._effort == "high"
+
+
+@pytest.mark.parametrize("effort", ["altissimo", "MEDIUM", ""])
+def test_effort_invalido_nao_sobe(monkeypatch, effort):
+    monkeypatch.setenv("LLM_EFFORT", effort)
+
+    with pytest.raises(ValidationError):
+        Settings()
+
+
 def test_chave_nao_aparece_no_repr():
     settings = Settings(
         llm_provider="claude", llm_model="claude-sonnet-5", anthropic_api_key="sk-segredo"

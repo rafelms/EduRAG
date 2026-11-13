@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     anthropic_api_key: SecretStr | None = None
     # Teto de saída por resposta do Claude.
     llm_max_tokens: int = 1024
+    # Esforço do Claude: quanto mais alto, mais tokens de saída (e mais custo).
+    # Valor fora da lista impede a API de subir.
+    llm_effort: Literal["low", "medium", "high", "xhigh", "max"] = "medium"
     embedding_model: str = "nomic-embed-text"
     # Prefixos do nomic-embed-text; deixe vazio para modelos que não usam.
     embedding_document_prefix: str = "search_document: "

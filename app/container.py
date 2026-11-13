@@ -56,6 +56,7 @@ def build_llm(settings: Settings) -> LLMPort:
             settings.llm_model,
             timeout=settings.llm_timeout_seconds,
             max_tokens=settings.llm_max_tokens,
+            effort=settings.llm_effort,
         )
     return OllamaLLM(
         settings.ollama_base_url,

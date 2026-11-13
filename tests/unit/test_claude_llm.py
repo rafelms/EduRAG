@@ -54,6 +54,7 @@ def test_toda_chamada_sai_com_o_sonnet_5_e_sem_fallback():
     assert call["model"] == "claude-sonnet-5"
     assert call["thinking"] == {"type": "disabled"}
     assert call["max_tokens"] == 1024
+    assert call["output_config"] == {"effort": "medium"}
     # Nada que possa trocar de modelo ou dar ferramentas ao LLM.
     assert "fallbacks" not in call
     assert "tools" not in call
@@ -68,6 +69,14 @@ def test_prompt_injection_na_resposta_nao_muda_a_proxima_chamada():
     llm.generate("segunda")
 
     assert [c["model"] for c in client.calls] == ["claude-sonnet-5", "claude-sonnet-5"]
+
+
+def test_effort_configurado_vai_na_chamada():
+    client = FakeAnthropic()
+
+    ClaudeLLM("chave-falsa", "claude-sonnet-5", effort="low", client=client).generate("p")
+
+    assert client.calls[0]["output_config"] == {"effort": "low"}
 
 
 def test_modelo_fora_da_lista_e_recusado_no_adaptador():
