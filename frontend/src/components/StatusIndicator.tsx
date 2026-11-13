@@ -3,7 +3,11 @@ import { api } from '../api'
 
 type State = { tone: 'ok' | 'warn' | 'down' | 'unknown'; label: string }
 
-const COMPONENTS: Record<string, string> = { database: 'banco', ollama: 'Ollama' }
+const COMPONENTS: Record<string, string> = {
+  database: 'banco',
+  embeddings: 'embeddings',
+  llm: 'LLM',
+}
 
 const DOT = {
   ok: 'bg-emerald-500',

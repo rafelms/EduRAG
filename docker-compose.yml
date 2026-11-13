@@ -6,7 +6,11 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       OLLAMA_BASE_URL: http://ollama:11434
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
       LLM_MODEL: ${LLM_MODEL:-qwen2.5:3b}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LLM_MAX_TOKENS: ${LLM_MAX_TOKENS:-1024}
+      LLM_EFFORT: ${LLM_EFFORT:-medium}
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
       EMBEDDING_DOCUMENT_PREFIX: "${EMBEDDING_DOCUMENT_PREFIX-search_document: }"
       EMBEDDING_QUERY_PREFIX: "${EMBEDDING_QUERY_PREFIX-search_query: }"

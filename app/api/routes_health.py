@@ -20,13 +20,12 @@ def health() -> dict[str, str]:
 
 @router.get("/ready")
 def ready(services: ServicesDep) -> JSONResponse:
-    """Readiness: banco e Ollama respondem."""
-
-    def ollama() -> None:
-        services.embeddings.ping()
-        services.llm.ping()
-
-    checks = {"database": services.repository.ping, "ollama": ollama}
+    """Readiness: banco, embeddings (Ollama) e LLM (Ollama ou Claude) respondem."""
+    checks = {
+        "database": services.repository.ping,
+        "embeddings": services.embeddings.ping,
+        "llm": services.llm.ping,
+    }
     failed: list[str] = []
     for name, check in checks.items():
         try:

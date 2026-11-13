@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 
+from app.adapters.claude_llm import ClaudeLLM
 from app.adapters.ollama_embeddings import OllamaEmbeddings
 from app.adapters.ollama_llm import OllamaLLM
 from app.adapters.pg_repository import PgDocumentRepository
@@ -46,8 +47,27 @@ def assemble_services(
     )
 
 
+def build_llm(settings: Settings) -> LLMPort:
+    if settings.llm_provider == "claude":
+        # A config já garantiu modelo permitido e chave presente.
+        assert settings.anthropic_api_key is not None
+        return ClaudeLLM(
+            settings.anthropic_api_key.get_secret_value(),
+            settings.llm_model,
+            timeout=settings.llm_timeout_seconds,
+            max_tokens=settings.llm_max_tokens,
+            effort=settings.llm_effort,
+        )
+    return OllamaLLM(
+        settings.ollama_base_url,
+        settings.llm_model,
+        settings.llm_timeout_seconds,
+        num_ctx=settings.llm_num_ctx,
+    )
+
+
 def build_services(settings: Settings) -> Services:
-    """Serviços de produção: PostgreSQL e Ollama."""
+    """Serviços de produção: PostgreSQL, embeddings no Ollama e o LLM escolhido."""
     engine = create_db_engine(settings.database_url)
     return assemble_services(
         settings,
@@ -58,10 +78,5 @@ def build_services(settings: Settings) -> Services:
             document_prefix=settings.embedding_document_prefix,
             query_prefix=settings.embedding_query_prefix,
         ),
-        llm=OllamaLLM(
-            settings.ollama_base_url,
-            settings.llm_model,
-            settings.llm_timeout_seconds,
-            num_ctx=settings.llm_num_ctx,
-        ),
+        llm=build_llm(settings),
     )
