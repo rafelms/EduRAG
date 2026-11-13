@@ -175,6 +175,8 @@ Aula: [0008](estudo/lessons/0008-publicar-no-ghcr.html). Desenho: jobs `publica-
 
 Antes, a base seria feita à mão. Agora ela é **código**: tudo que for criado por `apply` some com `destroy` na etapa 15, sem recurso esquecido gerando cobrança.
 
+**Decidido em 13/11/2026:** região **`us-east-1`**; acesso pelo **túnel do SSM**; **o Rafael escreve todo o Terraform** (e, nas etapas 12 a 14, o Prometheus e o Grafana). As aulas saem do `/teach`, a partir do prompt em [estudo/prompts/etapa-10-terraform.md](estudo/prompts/etapa-10-terraform.md). Numeração: a próxima aula é a **0011** (o número 0010 ficou com o `ClaudeLLM`, feito sem aula em HTML).
+
 *Bootstrap (à mão, uma vez, documentado):*
 - [ ] Alerta de orçamento (AWS Budgets) **no primeiro dia**, antes de qualquer recurso. Depois ele entra no Terraform com um bloco `import`: é a primeira aula de `terraform import`.
 - [ ] Root com MFA e guardado; usuário do dia a dia (IAM Identity Center ou IAM) com MFA. Credencial local por `aws sso login` ou perfil, nunca access key no repositório.

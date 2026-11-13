@@ -17,9 +17,10 @@ Aprender fazendo: construir com as próprias mãos a pipeline do EduRAG, subir a
 - Ter os prints e links organizados para o currículo antes do `destroy`.
 
 ## Restrições
-- Regra da Camada B: o Rafael escreve e configura; a IA explica e revisa.
+- Regra da Camada B: o Rafael escreve e configura; a IA explica e revisa. Na etapa 9 (código Python da aplicação), ele autorizou a IA a escrever. **A partir da etapa 10, AWS, Terraform, Prometheus e Grafana são escritos por ele** (decidido em 13/11/2026): a IA dá o porquê e o roteiro, revisa apontando linhas e só dá esqueleto se ele travar.
+- Região da AWS: `us-east-1`.
 - Orçamento baixo: alerta de gastos na AWS e teto de gastos na Anthropic antes de qualquer recurso pago. Nada de serviço caro (EKS, NAT Gateway, RDS ficam de fora).
-- Nenhuma porta de entrada aberta para a internet: acesso pelo túnel do SSM (decisão a confirmar na etapa 10).
+- Nenhuma porta de entrada aberta para a internet: acesso pelo túnel do SSM (decidido em 13/11/2026).
 - Segue a ordem das etapas do plano; cada etapa só começa com a anterior verde.
 
 ## Fora do escopo
