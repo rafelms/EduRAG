@@ -58,6 +58,7 @@ class FakeLLM(LLMPort):
         self.answer = answer
         self.prompts: list[str] = []
         self.available = True
+        self.error: Exception | None = None  # levantado no generate, se definido
 
     @property
     def model_name(self) -> str:
@@ -65,6 +66,8 @@ class FakeLLM(LLMPort):
 
     def generate(self, prompt: str) -> str:
         self.prompts.append(prompt)
+        if self.error:
+            raise self.error
         return self.answer
 
     def ping(self) -> None:

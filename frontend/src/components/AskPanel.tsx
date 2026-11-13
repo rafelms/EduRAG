@@ -72,14 +72,14 @@ export function AskPanel({ selectedDocuments, hasReadyDocuments }: Props) {
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
             <span>{scope}</span>
-            <label className="flex items-center gap-1.5" title="Quantos trechos recuperar (1 a 20)">
+            <label className="flex items-center gap-1.5" title="Quantos trechos recuperar (1 a 10)">
               Trechos
               <input
                 type="number"
                 min={1}
-                max={20}
+                max={10}
                 value={topK}
-                onChange={(e) => setTopK(Math.min(20, Math.max(1, Number(e.target.value) || 1)))}
+                onChange={(e) => setTopK(Math.min(10, Math.max(1, Number(e.target.value) || 1)))}
                 className="w-14 rounded border border-slate-300 px-1.5 py-0.5 text-slate-700"
               />
             </label>

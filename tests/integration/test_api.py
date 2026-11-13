@@ -1,3 +1,4 @@
+from app.ports.llm import LLMUnavailableError
 from tests.pdfs import make_blank_pdf, make_pdf
 
 EDITAL = ["Informacoes gerais do concurso", "As inscricoes estarao abertas ate 15 de outubro"]
@@ -18,7 +19,16 @@ def test_ready_devolve_503_com_o_componente_que_falhou(client, fakes):
     response = client.get("/ready")
 
     assert response.status_code == 503
-    assert response.json()["failed"] == ["ollama"]
+    assert response.json()["failed"] == ["embeddings"]
+
+
+def test_ready_aponta_o_llm_quando_so_ele_cai(client, fakes):
+    fakes["llm"].available = False
+
+    response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json()["failed"] == ["llm"]
 
 
 def test_upload_valido_responde_202_e_chega_a_pronto(client):
@@ -104,6 +114,17 @@ def test_pergunta_fora_do_tema_nao_encontra_e_nao_chama_o_llm(client, fakes):
 def test_pergunta_invalida_responde_422(client):
     assert client.post("/ask", json={"question": "   "}).status_code == 422
     assert client.post("/ask", json={"question": "ok", "top_k": 0}).status_code == 422
+    assert client.post("/ask", json={"question": "ok", "top_k": 11}).status_code == 422
+
+
+def test_llm_indisponivel_responde_502(client, fakes):
+    upload(client, make_pdf(EDITAL))
+    fakes["llm"].error = LLMUnavailableError("teto de gastos atingido")
+
+    response = client.post("/ask", json={"question": "inscricoes abertas ate quando"})
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "O serviço de modelos não respondeu."
 
 
 def test_historico_paginado_com_latencia(client):

@@ -25,7 +25,9 @@ class DocumentOut(BaseModel):
 class AskRequest(BaseModel):
     question: str
     document_ids: list[UUID] | None = None
-    top_k: int = Field(default=5, ge=1, le=20)
+    # O top_k decide quantos tokens vão para o LLM (e quanto se paga). Teto 10: cabe no
+    # limite de 15 mil tokens de entrada por minuto do workspace edurag.
+    top_k: int = Field(default=5, ge=1, le=10)
 
     @field_validator("question")
     @classmethod

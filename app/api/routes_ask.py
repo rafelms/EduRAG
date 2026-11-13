@@ -8,6 +8,7 @@ from httpx import HTTPError
 
 from app.api.routes_documents import ServicesDep
 from app.api.schemas import AskRequest, AskResponse, QuestionOut, QuestionsPage
+from app.ports.llm import LLMUnavailableError
 
 router = APIRouter(tags=["perguntas"])
 
@@ -16,8 +17,9 @@ router = APIRouter(tags=["perguntas"])
 def ask(body: AskRequest, services: ServicesDep) -> AskResponse:
     try:
         answer = services.qa.ask(body.question, body.document_ids, body.top_k)
-    except HTTPError as exc:
-        raise HTTPException(502, "O serviço de modelos (Ollama) não respondeu.") from exc
+    except (HTTPError, LLMUnavailableError) as exc:
+        # HTTPError vem do Ollama (embeddings ou LLM local); LLMUnavailableError, do Claude.
+        raise HTTPException(502, "O serviço de modelos não respondeu.") from exc
     return AskResponse(
         question_id=answer.question_id,
         answer=answer.answer,
