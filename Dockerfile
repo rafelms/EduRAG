@@ -1,5 +1,5 @@
 # ---- build: instala as dependências num venv ----
-FROM python:3.12-slim AS builder
+FROM python:3.15-slim AS builder
 # uv fixado por digest: o Dependabot não acompanha o COPY --from.
 COPY --from=ghcr.io/astral-sh/uv:0.13.1@sha256:4a1f3666816dafadd20ceb71eac9a7d56d7ef30279f7d64048519ab901ada336 /uv /usr/local/bin/uv
 WORKDIR /app
@@ -9,7 +9,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --locked --no-dev --no-install-project
 
 # ---- runtime: imagem enxuta, sem uv, usuário não-root ----
-FROM python:3.12-slim
+FROM python:3.15-slim
 RUN useradd --create-home --uid 10001 edurag
 WORKDIR /app
 COPY --from=builder /app/.venv /app/.venv
