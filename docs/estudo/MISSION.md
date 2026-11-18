@@ -18,7 +18,8 @@ Aprender fazendo: construir com as próprias mãos a pipeline do EduRAG, subir a
 
 ## Restrições
 - Regra da Camada B: o Rafael escreve e configura; a IA explica e revisa. Na etapa 9 (código Python da aplicação), ele autorizou a IA a escrever. **A partir da etapa 10, AWS, Terraform, Prometheus e Grafana são escritos por ele** (decidido em 13/11/2026): a IA dá o porquê e o roteiro, revisa apontando linhas e só dá esqueleto se ele travar.
-- Região da AWS: `us-east-1`.
+- Região da AWS: `us-east-2` (era `us-east-1`; a conta é da experiência "AWS (new)", que fixa a região pelo país; registro 0013, 18/11/2026).
+- A conta tem SCPs da AWS que não podem ser mudadas: sem root nem usuário IAM com senha (login pelo Builder ID) e **sem provedor OIDC**.
 - Orçamento baixo: alerta de gastos na AWS e teto de gastos na Anthropic antes de qualquer recurso pago. Nada de serviço caro (EKS, NAT Gateway, RDS ficam de fora).
 - Nenhuma porta de entrada aberta para a internet: acesso pelo túnel do SSM (decidido em 13/11/2026).
 - Segue a ordem das etapas do plano; cada etapa só começa com a anterior verde.
