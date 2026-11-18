@@ -1,6 +1,8 @@
 # Prompt para o /teach: etapa 10 (base na AWS com Terraform)
 
 > Como usar: rode `/teach` e cole o bloco abaixo. Ele é o contexto da aula, não a aula pronta.
+>
+> **Desatualizado em parte (18/11/2026):** a conta é da experiência "AWS (new)". Região `us-east-2`, login pelo Builder ID (sem root e sem usuário IAM) e **OIDC bloqueado**. Vale o mapa do `pipeline-plano.md` e o registro 0013, não as linhas abaixo sobre região, Identity Center e OIDC.
 
 ---
 
