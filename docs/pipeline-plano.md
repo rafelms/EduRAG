@@ -175,39 +175,39 @@ Aula: [0008](estudo/lessons/0008-publicar-no-ghcr.html). Desenho: jobs `publica-
 
 Antes, a base seria feita à mão. Agora ela é **código**: tudo que for criado por `apply` some com `destroy` na etapa 15, sem recurso esquecido gerando cobrança.
 
-**Decidido em 13/11/2026:** região **`us-east-1`**; acesso pelo **túnel do SSM**; **o Rafael escreve todo o Terraform** (e, nas etapas 12 a 14, o Prometheus e o Grafana). As aulas saem do `/teach`, a partir do prompt em [estudo/prompts/etapa-10-terraform.md](estudo/prompts/etapa-10-terraform.md). Numeração: a próxima aula é a **0011** (o número 0010 ficou com o `ClaudeLLM`, feito sem aula em HTML).
+**Decidido em 13/11/2026:** acesso pelo **túnel do SSM**; região **`us-east-2`** (era `us-east-1`; mudou em 18/11 porque a conta é da experiência "AWS (new)", que fixa a região pelo país, ver registro [0013](estudo/learning-records/0013-conta-aws-new-e-ferramentas.md)); **o Rafael escreve todo o Terraform** (e, nas etapas 12 a 14, o Prometheus e o Grafana). As aulas saem do `/teach`, a partir do prompt em [estudo/prompts/etapa-10-terraform.md](estudo/prompts/etapa-10-terraform.md). Numeração: a próxima aula é a **0011** (o número 0010 ficou com o `ClaudeLLM`, feito sem aula em HTML).
 
 *Mapa das aulas (13/11/2026; eram três, viraram quatro para cada uma caber numa sessão):*
 
 | Aula | Conteúdo | Prova |
 | --- | --- | --- |
-| [0011](estudo/lessons/0011-a-conta-antes-do-codigo.html) | Plano da conta, root com MFA, Budget `edurag-mensal`, usuário IAM com MFA e `aws login`, CLI, Terraform e plugin do Session Manager | `sts get-caller-identity` mostra o usuário, não o root; as três ferramentas respondem |
-| 0012 | Bucket do *state* à mão, backend S3 com `use_lockfile`, `.gitignore` do Terraform, primeiro ciclo `init` → `plan` → `apply` → `destroy` com um recurso grátis | O `destroy` deixa a conta como estava |
+| [0011](estudo/lessons/0011-a-conta-antes-do-codigo.html) ✅ | Plano da conta, MFA, Budget `edurag-mensal`, `aws login`, CLI, Terraform e plugin do Session Manager. Feita em 18/11 numa conta "AWS (new)": Builder ID no lugar do root e do usuário IAM ([0013](estudo/learning-records/0013-conta-aws-new-e-ferramentas.md)) | `sts get-caller-identity` mostra `assumed-role/AccountFullAccessRole`, não o root; as três ferramentas respondem |
+| [0012](estudo/lessons/0012-o-state-no-s3.html) | Bucket do *state* à mão, backend S3 com `use_lockfile`, lock file do provider, `.gitignore` do Terraform, primeiro ciclo `init` → `plan` → `apply` → `destroy` com um parâmetro `String` do SSM | A trava barra um segundo `plan`; o `destroy` deixa a conta como estava |
 | 0013 | EC2, security group sem entrada, role e *instance profile* do SSM, `user_data`, túnel até a interface, RAM medida | Interface pelo túnel; `nmap` de fora sem porta |
-| 0014 | OIDC do GitHub e role mínima, Parameter Store, `import` do Budget, portão de IaC na CI | PR abrindo a porta 22 barrado |
+| 0014 | Parameter Store, `import` do Budget, portão de IaC na CI e a **decisão de como o deploy entra no EC2** (o OIDC está bloqueado na conta) | PR abrindo a porta 22 barrado |
 
 Referência: [Terraform e AWS](estudo/reference/terraform-aws.html).
 
 *Bootstrap (à mão, uma vez, documentado):*
-- [ ] Alerta de orçamento (AWS Budgets) **no primeiro dia**, antes de qualquer recurso. Depois ele entra no Terraform com um bloco `import`: é a primeira aula de `terraform import`.
-- [ ] Root com MFA, sem access key e guardado; usuário IAM do dia a dia com MFA. Credencial local pelo **`aws login`** (temporária, até 12 h), nunca access key. **Sem IAM Identity Center** (aula 0011): ativá-lo cria uma AWS Organization, que passa uma conta do plano gratuito para o pago e expira os créditos.
-- [ ] Bucket S3 do *state* (versionado, criptografado, bloqueio de acesso público), com trava nativa do S3 (`use_lockfile = true`, sem DynamoDB).
+- [x] **Alerta de orçamento (18/11/2026):** Budget `edurag-mensal`, US$ 15/mês, alertas em 85% e 100% do real e 100% do previsto, créditos excluídos do cálculo. Depois ele entra no Terraform com um bloco `import`: é a primeira aula de `terraform import`.
+- [x] **Identidade (18/11/2026):** a conta é da experiência "AWS (new)", com *projects*: não há root nem usuário IAM com senha (SCP). O login é pelo **AWS Builder ID com MFA**, e a credencial local pelo **`aws login`** (role `AccountFullAccessRole`, temporária, até 12 h), nunca access key. AWS CLI 2.41.0, Terraform 1.17.2 (hash conferido) e plugin do Session Manager instalados. Plano gratuito, US$ 100 de crédito até 15/05/2027.
+- [ ] Bucket S3 do *state* (versionado, criptografado, bloqueio de acesso público), com trava nativa do S3 (`use_lockfile = true`, sem DynamoDB). Aula 0012.
 
 *Terraform (pasta `infra/`, PR `infra/base`):*
 - [ ] EC2 Amazon Linux 2023 (já vem com o agente do SSM) na VPC padrão, com *instance profile* `AmazonSSMManagedInstanceCore`. Tamanho de partida: `t3.medium` (Postgres, API, nginx, Ollama de embeddings, Prometheus e Grafana na mesma máquina); medir a RAM e ajustar. **No plano gratuito, o `t3.medium` não é elegível** (elegíveis: `t3.micro`, `t3.small`, `t4g.micro`, `t4g.small`, `c7i-flex.large`, `m7i-flex.large`); a escolha fica para a aula 0013. Disco gp3 e `user_data` instalando Docker e o plugin do compose.
 - [ ] **Security group sem nenhuma regra de entrada.** Acesso só pelo túnel do SSM (`AWS-StartPortForwardingSession`) para a interface (8080) e o Grafana (3000). **Decidido em 13/11/2026: túnel do SSM**, nenhuma porta aberta.
-- [ ] Provedor **OIDC** do GitHub e uma *role* com permissão mínima: `ssm:SendCommand` só nessa instância e no documento `AWS-RunShellScript`, e leitura do resultado. Condição no `sub`: só a `main` do `rafelms/EduRAG`.
+- [ ] ~~Provedor **OIDC** do GitHub e uma *role* com permissão mínima~~ **Bloqueado (18/11/2026):** a SCP da conta "AWS (new)" nega `iam:*Provider*`. **Decisão dele, até a aula 0014**, de como o deploy da etapa 11 chega ao EC2: (a) usuário IAM só com access key, guardada nos segredos do GitHub, com `ssm:SendCommand` só nessa instância (credencial de longa duração; a SCP parece permitir, não testado); (b) deploy por *pull*: a própria instância busca a tag nova no GHCR, e o GitHub não precisa de credencial da AWS; (c) ativar os recursos avançados da conta (irreversível, exige o plano pago, perde o spend limit) e voltar ao OIDC.
 - [ ] Parâmetros no **SSM Parameter Store** (`SecureString`) para a chave `edurag-prod` do Claude, a senha do Postgres e a senha do Grafana. **O valor é gravado à mão** (`aws ssm put-parameter`); o Terraform só dá à instância permissão de ler esses nomes. Valor de segredo em recurso do Terraform vai parar no *state*.
 - [ ] **Registro: GHCR, sem ECR.** Os pacotes já são públicos e o EC2 puxa sem credencial (registro [0010](estudo/learning-records/0010-publicacao-no-ghcr.md)). O ECR acrescentaria custo e uma permissão sem ganho para um ambiente temporário.
 - [ ] **Portão de IaC na CI:** `terraform fmt -check`, `terraform validate` (com `init -backend=false`, sem credencial) e `trivy config infra/` falhando em HIGH/CRITICAL, como check obrigatório. *Teste de bloqueio:* PR abrindo a porta 22 para `0.0.0.0/0` → pipeline falha.
 
 *Pronto quando:* `terraform apply` sobe a máquina do zero, você abre a interface pelo túnel do SSM e um `nmap` de fora não acha nenhuma porta aberta.
-*Para estudar:* *state* e por que ele é sensível, `plan` × `apply`, IAM e menor privilégio, OIDC × access keys, SSM Session Manager × SSH.
+*Para estudar:* *state* e por que ele é sensível, `plan` × `apply`, IAM e menor privilégio, OIDC × access keys (e por que a conta bloqueia o OIDC), SCPs, SSM Session Manager × SSH.
 
 ### Etapa 11 — Deploy contínuo
 
 - [ ] `docker-compose.prod.yml`: imagens do GHCR pela tag do SHA (sem `build`), API sem porta publicada (só o `web` fala com ela pela rede interna), segredos lidos do Parameter Store no deploy, nunca de um `.env` versionado.
-- [ ] Job `deploy` no `build.yml`, só na `main` e com `needs` na publicação: autentica via OIDC e manda pelo SSM `docker compose pull` + `up -d` com a tag do commit.
+- [ ] Job `deploy` no `build.yml`, só na `main` e com `needs` na publicação: autentica ~~via OIDC~~ (bloqueado na conta; o jeito depende da decisão da etapa 10) e manda pelo SSM `docker compose pull` + `up -d` com a tag do commit. Se a decisão for o deploy por *pull*, este job some e a instância faz o `pull` e o smoke test sozinha.
 - [ ] Smoke test chamando `/ready`; se falhar, voltar para a tag anterior.
 
 *Teste de bloqueio:* PR que quebra o `/ready` de propósito → o deploy volta sozinho para a tag anterior.
@@ -259,7 +259,7 @@ Fecha o que a Camada A deixou pendente: o painel de latência do LLM e o alerta 
 
 - [ ] Guardar antes de destruir: prints dos painéis, do alerta recebido, do deploy automático e do rollback, e os links dos PRs barrados.
 - [ ] `terraform destroy` e conferência: nenhuma instância, volume, IP público ou snapshot sobrando no Cost Explorer depois de uns dias.
-- [ ] Revogar a chave `edurag-prod` no Console da Anthropic, apagar os parâmetros do SSM e a *role* do OIDC (se ficou fora do Terraform), e por último o bucket do *state*.
+- [ ] Revogar a chave `edurag-prod` no Console da Anthropic, apagar os parâmetros do SSM e a credencial do deploy (o que tiver sido escolhido na etapa 10, se ficou fora do Terraform), e por último o bucket do *state*. O projeto da AWS fica; o Budget também (grátis).
 
 *Pronto quando:* a fatura do mês seguinte vem zerada e a evidência está no README.
 

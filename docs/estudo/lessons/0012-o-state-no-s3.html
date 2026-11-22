@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>O state no S3</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Aula 0012 · Etapa 10 do <a href="../../pipeline-plano.md">pipeline-plano</a> · ~60 min</p>
+  <h1>O state no S3</h1>
+  <p class="subtitle">Um bucket feito à mão, o primeiro HCL escrito por você e um ciclo completo que termina com a conta do jeito que estava.</p>
+</header>
+
+<div class="note">
+  <p><strong>Fontes conferidas em 18/11/2026.</strong> Terraform <strong>1.17.2</strong> (a mais nova estável), provider <code>hashicorp/aws</code> <strong>6.73.0</strong> (11/11). A sua conta é da experiência "AWS (new)": região <strong><code>us-east-2</code></strong>, login pelo Builder ID (<a href="../learning-records/0013-conta-aws-new-e-ferramentas.md">registro 0013</a>). S3 e SSM estão liberados nas SCPs do plano gratuito.</p>
+</div>
+
+<h2>Aquecimento: de memória</h2>
+<p>Sem abrir nada: na aula 0011, por que o <code>Arn</code> terminou em <code>assumed-role/...</code> e não em <code>:user/...</code>? O Budget <code>edurag-mensal</code> exclui dois tipos de cobrança: quais, e por que isso é bom? E da aula 0005: por que o <code>uv.lock</code> vai para o git? Guarde a última resposta, porque ela volta nesta aula. Confira no <a href="../learning-records/0013-conta-aws-new-e-ferramentas.md">registro 0013</a> e na <a href="0005-cadeia-de-suprimentos.html">aula 0005</a>.</p>
+
+<h2>O ovo e a galinha</h2>
+
+<p>O Terraform guarda o <em>state</em> num bucket S3. Mas quem cria esse bucket? Se for o mesmo Terraform, ele precisaria do bucket para guardar o <em>state</em> do próprio bucket. Por isso o bucket do <em>state</em> é a <strong>última peça feita à mão</strong> da trilha, junto com o Budget. Ele fica fora do <code>destroy</code> e é o último a sair na etapa 15.</p>
+
+<div class="flow">
+  <span>você (aws login)</span><i>→</i><span>terraform plan/apply</span><i>→</i><span class="gate">trava: &lt;key&gt;.tflock</span><i>→</i><span>state no S3</span><i>→</i><span>recursos na conta</span>
+</div>
+
+<h2>O bucket: o que já vem pronto e o que você liga</h2>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Configuração</th><th>Num bucket novo</th><th>Você faz</th></tr>
+  <tr><td>Bloqueio de acesso público</td><td>As quatro opções <strong>ligadas</strong></td><td>Só confere</td></tr>
+  <tr><td>ACLs</td><td><strong>Desligadas</strong> (<em>Bucket owner enforced</em>)</td><td>Nada</td></tr>
+  <tr><td>Criptografia</td><td><strong>SSE-S3</strong> em todo objeto novo</td><td>Só confere</td></tr>
+  <tr><td>Versionamento</td><td><strong>Desligado</strong></td><td><strong>Liga</strong></td></tr>
+</table>
+</div>
+<p class="source">Fonte: <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/create-bucket-overview.html">S3: Creating a general purpose bucket</a> ("By default, all four Block Public Access settings are enabled", "By default, versioning is disabled for buckets", "All new objects uploaded to an S3 bucket are automatically encrypted with SSE-S3").</p>
+
+<p><strong>Por que versionar?</strong> Um <code>apply</code> que quebra no meio, ou um <em>state</em> sobrescrito por engano, deixa o Terraform sem saber o que existe na conta. Com versionamento, cada gravação do <em>state</em> vira uma versão nova, e a anterior continua recuperável. A documentação do backend chama isso de "highly recommended".<span class="source"> (<a href="https://developer.hashicorp.com/terraform/language/backend/s3">Terraform: Backend S3</a>)</span></p>
+
+<p><strong>O nome</strong> precisa ser único em toda a AWS (na partição comercial), com 3 a 63 caracteres, só minúsculas, números e hífens. A documentação avisa para não pôr informação sensível nele, porque ele aparece nas URLs.<span class="source"> (<a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/create-bucket-overview.html">S3: bucket naming</a>)</span> O nome vai ficar no seu repositório público, dentro do bloco <code>backend</code>. Por isso, use <code>edurag-tfstate-</code> com um sufixo aleatório, e não o ID da conta.</p>
+
+<p><strong>Fora de <code>us-east-1</code></strong>, o <code>create-bucket</code> exige <code>--create-bucket-configuration LocationConstraint=us-east-2</code>. Sem isso, o comando falha.<span class="source"> (<a href="https://awscli.amazonaws.com/v2/documentation/api/latest/reference/s3api/create-bucket.html">AWS CLI: create-bucket</a>)</span></p>
+
+<h2>O backend S3, peça por peça</h2>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Argumento</th><th>Para quê</th></tr>
+  <tr><td><code>bucket</code></td><td>O bucket que você criou</td></tr>
+  <tr><td><code>key</code></td><td>O caminho do arquivo dentro do bucket (ex.: uma pasta por ambiente e um nome de arquivo)</td></tr>
+  <tr><td><code>region</code></td><td>A região do bucket: <code>us-east-2</code></td></tr>
+  <tr><td><code>use_lockfile</code></td><td>Liga a <strong>trava</strong>: um objeto <code>&lt;key&gt;.tflock</code> enquanto alguém mexe no <em>state</em>. O padrão é <code>false</code></td></tr>
+  <tr><td><code>encrypt</code></td><td>Criptografia do lado do servidor no <em>state</em> e na trava (o padrão é desligado, mas o bucket já criptografa com SSE-S3)</td></tr>
+</table>
+</div>
+<p class="source">Fonte: <a href="https://developer.hashicorp.com/terraform/language/backend/s3">Terraform: Backend S3</a>. A trava pelo DynamoDB "is deprecated and will be removed in a future minor version": não use.</p>
+
+<p><strong>Onde <em>não</em> pôr a credencial:</strong> o backend e o provider aceitam <code>profile = "edurag"</code>, mas não escreva isso no código. Na aula 0014, a CI roda <code>init -backend=false</code> sem perfil nenhum, e um nome de perfil fixo no código só existe na sua máquina. Use a variável da sessão: <code>$env:AWS_PROFILE = "edurag"</code>. A documentação também recomenda manter as credenciais fora dos arquivos do backend, porque elas iriam parar na pasta <code>.terraform</code> e nos arquivos de plano.<span class="source"> (<a href="https://developer.hashicorp.com/terraform/language/backend/s3">Backend S3: partial configuration</a>)</span></p>
+
+<h2>O lock file do provider: o <code>uv.lock</code> do Terraform</h2>
+
+<p>O <code>terraform init</code> grava o <code>.terraform.lock.hcl</code> com a versão escolhida de cada provider e os hashes dela. Depois disso, "Terraform will always re-select that version", até você pedir <code>init -upgrade</code>. A documentação manda <strong>versionar</strong> esse arquivo, para que uma troca de versão apareça num PR, como no <code>uv.lock</code>.<span class="source"> (<a href="https://developer.hashicorp.com/terraform/language/files/dependency-lock">Terraform: Dependency lock file</a>)</span></p>
+
+<p><strong>Armadilha para a 0014:</strong> por padrão, o lock só traz os hashes da plataforma onde você rodou o <code>init</code> (a sua é <code>windows_amd64</code>). A CI roda em <code>linux_amd64</code>. O comando <code>terraform providers lock</code>, com um <code>-platform</code> para cada plataforma, grava as duas de uma vez.<span class="source"> (<a href="https://developer.hashicorp.com/terraform/language/files/dependency-lock">Dependency lock file</a>)</span></p>
+
+<h2>O que entra e o que não entra no git</h2>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Arquivo ou pasta</th><th>Git?</th><th>Por quê</th></tr>
+  <tr><td><code>infra/*.tf</code></td><td>Sim</td><td>É o código</td></tr>
+  <tr><td><code>.terraform.lock.hcl</code></td><td><strong>Sim</strong></td><td>Fixa versão e hashes do provider</td></tr>
+  <tr><td>A pasta <code>.terraform/</code></td><td>Não</td><td>O provider baixado (centenas de MB) e o cache do backend</td></tr>
+  <tr><td><code>*.tfstate</code> e <code>*.tfstate.*</code> (backups)</td><td>Não</td><td>Se um dia o <em>state</em> cair na sua máquina, é texto puro com tudo da conta</td></tr>
+  <tr><td><code>*.tfvars</code></td><td>Não</td><td>É onde se costuma pôr valor sensível</td></tr>
+  <tr><td><code>crash.log</code>, arquivos de plano salvos (<code>-out</code>)</td><td>Não</td><td>Lixo de execução; o plano salvo carrega valores</td></tr>
+</table>
+</div>
+<p>Você escreve as linhas no <code>.gitignore</code> da raiz. Teste antes do commit: <code>git status</code> não pode listar nada de dentro de <code>infra/.terraform/</code>.</p>
+
+<h2>O recurso de teste: grátis e com uma lição dentro</h2>
+
+<p>O primeiro ciclo usa um <strong>parâmetro do Parameter Store</strong> do tipo <code>String</code>, de valor inocente (por exemplo, <code>"ola terraform"</code>). Parâmetro padrão não cobra nada, nem na leitura.<span class="source"> (<a href="https://aws.amazon.com/systems-manager/pricing/">Systems Manager pricing</a>)</span> Na 0014, a instância vai ler os segredos de lá.</p>
+
+<p><strong>Aposte:</strong> se em vez de <code>String</code> você usar <code>SecureString</code> com a chave do Claude como valor, ela fica protegida no <em>state</em>?</p>
+<details>
+  <summary>Resposta</summary>
+  <p>Não. O <code>SecureString</code> é criptografado <em>dentro do SSM</em>, mas o Terraform guarda no <em>state</em> o valor que recebeu, em texto puro.<span class="source"> (<a href="https://developer.hashicorp.com/terraform/language/manage-sensitive-data">Terraform: sensitive data</a>)</span> É por isso que o valor dos segredos vai pelo <code>aws ssm put-parameter</code>, à mão, e o Terraform só dá permissão de leitura (registro 0011, aula 0011).</p>
+</details>
+
+<h2>Custo desta aula</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Recurso</th><th>Custo</th></tr>
+  <tr><td>Bucket do <em>state</em> (alguns KB, poucas versões)</td><td>Centavos por mês, no máximo</td></tr>
+  <tr><td>Parâmetro <code>String</code> padrão</td><td>0</td></tr>
+</table>
+</div>
+<p class="source">A tabela de preço do S3 carrega por script; conferir na <a href="https://calculator.aws/">Calculator</a> se quiser o valor exato. GET no S3 Standard: US$ 0,0004 por mil (<a href="https://aws.amazon.com/s3/pricing/">S3 pricing</a>).</p>
+
+<h2>Mão na massa</h2>
+
+<p>Sem esqueleto. Cada bloco do HCL tem o link da documentação: leia o exemplo de lá e escreva o seu. Se travar, peça o esqueleto (sem valores), como na aula 0006.</p>
+
+<ol class="checklist" data-key="0012-state">
+  <li><strong>Sessão:</strong> num PowerShell novo, <code>aws login --profile edurag</code> (se a credencial de 12 h venceu) e <code>$env:AWS_PROFILE = "edurag"</code>. Confira com <code>aws sts get-caller-identity</code>, agora <strong>sem</strong> <code>--profile</code>: se responder, a variável funcionou.</li>
+  <li><strong>Nome do bucket:</strong> gere um sufixo com <code>-join ((48..57) + (97..122) | Get-Random -Count 6 | ForEach-Object { [char]$_ })</code> e monte <code>edurag-tfstate-&lt;sufixo&gt;</code>. Anote.</li>
+  <li><strong>Criar o bucket:</strong> <code>aws s3api create-bucket</code> com <code>--bucket</code>, <code>--region us-east-2</code> e o <code>--create-bucket-configuration</code> da seção acima. A resposta traz um <code>Location</code>.</li>
+  <li><strong>Ligar o versionamento:</strong> <code>aws s3api put-bucket-versioning</code> com <code>--versioning-configuration Status=Enabled</code>. Confira com <code>get-bucket-versioning</code>: precisa responder <code>"Status": "Enabled"</code>.<span class="source"> (<a href="https://awscli.amazonaws.com/v2/documentation/api/latest/reference/s3api/put-bucket-versioning.html">put-bucket-versioning</a>)</span></li>
+  <li><strong>Conferir os padrões:</strong> <code>aws s3api get-public-access-block</code> (os quatro <code>true</code>) e <code>aws s3api get-bucket-encryption</code> (<code>AES256</code>, que é o SSE-S3).</li>
+  <li><strong>Branch:</strong> <code>git checkout -b infra/base</code>. Acrescente ao <code>.gitignore</code> as linhas da tabela "o que não entra no git".</li>
+  <li><strong><code>infra/versions.tf</code>:</strong> um bloco <code>terraform</code> com <code>required_version</code> (aceitando a 1.17), <code>required_providers</code> com o <code>hashicorp/aws</code> fixado na 6.73.0 e o <code>backend "s3"</code> com os cinco argumentos da tabela.<span class="source"> (<a href="https://developer.hashicorp.com/terraform/language/terraform">terraform block</a> · <a href="https://developer.hashicorp.com/terraform/language/expressions/version-constraints">version constraints</a> · <a href="https://developer.hashicorp.com/terraform/language/backend/s3">backend S3</a>)</span></li>
+  <li><strong><code>infra/providers.tf</code>:</strong> o bloco <code>provider "aws"</code> com <code>region = "us-east-2"</code> e <code>default_tags</code> (por exemplo, <code>Projeto = "edurag"</code> e <code>Gerenciado = "terraform"</code>). Sem <code>profile</code>.<span class="source"> (<a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs#default_tags-configuration-block">provider aws: default_tags</a>)</span></li>
+  <li><strong><code>terraform init</code></strong> dentro de <code>infra/</code>. Procure na saída "Successfully configured the backend "s3"" e veja o <code>.terraform.lock.hcl</code> aparecer. Se der "No valid credential sources found", confira o passo 1 e me chame.</li>
+  <li><strong><code>infra/teste.tf</code>:</strong> um <code>aws_ssm_parameter</code> do tipo <code>String</code>, com nome começando por <code>/edurag/</code> e um valor inocente.<span class="source"> (<a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/ssm_parameter">aws_ssm_parameter</a>)</span> Rode <code>terraform fmt</code> e <code>terraform validate</code>.</li>
+  <li><strong><code>terraform plan</code>:</strong> leia antes de seguir. Quantos recursos ele vai criar? As tags do <code>default_tags</code> aparecem em qual atributo?</li>
+  <li><strong>Prova da trava:</strong> rode <code>terraform apply</code> e <strong>não</strong> responda o <code>yes</code> ainda. Em outro PowerShell (com <code>$env:AWS_PROFILE</code> definido e dentro de <code>infra/</code>), rode <code>terraform plan</code>. Ele precisa falhar com "Error acquiring the state lock". Enquanto isso, <code>aws s3 ls s3://&lt;bucket&gt;/ --recursive</code> mostra o arquivo <code>.tflock</code>. Volte ao primeiro terminal e responda <code>yes</code>.</li>
+  <li><strong>Conferir na conta:</strong> <code>aws ssm get-parameter --name &lt;nome&gt;</code> e <code>terraform state list</code>. No S3, o <code>.tflock</code> sumiu e o <em>state</em> ficou.</li>
+  <li><strong><code>terraform destroy</code>:</strong> leia o plano de destruição e confirme. Depois, <code>aws ssm get-parameter</code> com o mesmo nome precisa dar <code>ParameterNotFound</code>.</li>
+  <li><strong>As versões do <em>state</em>:</strong> <code>aws s3api list-object-versions --bucket &lt;bucket&gt; --prefix &lt;key&gt;</code>. Quantas versões existem, e por quê?</li>
+  <li><strong>Fechar o PR:</strong> apague o <code>teste.tf</code> e rode <code>terraform plan</code>: ele precisa dizer "No changes". Rode <code>terraform providers lock -platform=windows_amd64 -platform=linux_amd64</code> para a CI da 0014. O commit leva <code>.gitignore</code>, <code>versions.tf</code>, <code>providers.tf</code> e o <code>.terraform.lock.hcl</code>. Abra o PR <code>infra/base</code>.</li>
+</ol>
+
+<h2>Me conte</h2>
+<ul>
+  <li>A linha do <code>init</code> sobre o backend e a versão do provider que o lock gravou.</li>
+  <li>O resumo do <code>plan</code> (<code>Plan: X to add...</code>) e onde as tags apareceram.</li>
+  <li>A mensagem do "Error acquiring the state lock" (pode cortar o ID).</li>
+  <li>Quantas versões do <em>state</em> o <code>list-object-versions</code> mostrou.</li>
+  <li>O link do PR <code>infra/base</code>. Eu reviso apontando as linhas.</li>
+</ul>
+
+<h2>Recupere da memória</h2>
+<p>As perguntas 5, 6 e 7 retomam a aula 0011, o registro 0013 e a aula 0005.</p>
+
+<div class="quiz">
+  <div class="question" data-answer="2">
+    <p class="prompt">1. Por que o bucket do state é criado à mão, e não pelo Terraform?</p>
+    <div class="options">
+      <button>Porque o provider da AWS não sabe criar bucket S3</button>
+      <button>Porque bucket criado pelo Terraform cobra mais caro</button>
+      <button>Porque o state precisa do bucket antes de existir</button>
+    </div>
+    <p class="feedback" data-ok="Isso. É o ovo e a galinha: o backend precisa do bucket já no init." data-bad="Não. O provider cria buckets sem problema. O motivo é a ordem: o init já precisa do bucket para guardar o state."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">2. O que o use_lockfile = true faz no backend S3?</p>
+    <div class="options">
+      <button>Cria um .tflock que barra dois applies ao mesmo tempo</button>
+      <button>Fixa a versão do provider no .terraform.lock.hcl</button>
+      <button>Liga o versionamento do bucket do state sozinho</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Enquanto um comando segura a trava, o outro falha com Error acquiring the state lock." data-bad="Não. Ele cria um objeto <key>.tflock no bucket enquanto alguém mexe no state; o segundo comando falha. Versão do provider é o lock file; versionamento você liga à mão."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">3. Por que não escrever profile = "edurag" no código?</p>
+    <div class="options">
+      <button>Porque o nome do perfil é um segredo que vaza no git</button>
+      <button>Porque esse perfil só existe na sua máquina, não na CI</button>
+      <button>Porque o aws login não funciona com perfis nomeados</button>
+    </div>
+    <p class="feedback" data-ok="Isso. O código precisa rodar em qualquer lugar; quem escolhe a credencial é o ambiente ($env:AWS_PROFILE)." data-bad="Não. O nome não é segredo, e o aws login usa perfil nomeado. O problema é que a CI não tem esse perfil: a credencial vem do ambiente."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">4. Um SecureString com a chave do Claude, criado pelo Terraform, fica onde em texto puro?</p>
+    <div class="options">
+      <button>Em nenhum lugar, porque o SSM criptografa o valor</button>
+      <button>Só nos logs do CloudTrail da conta do projeto</button>
+      <button>No state do Terraform, que guarda o valor recebido</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Por isso o valor vai por aws ssm put-parameter, à mão." data-bad="Não. O SSM criptografa do lado dele, mas o state guarda o valor que o Terraform mandou, em texto puro."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">5. O que o Budget edurag-mensal faz se o gasto passar de US$ 15?</p>
+    <div class="options">
+      <button>Manda e-mail; parar a máquina continua com você</button>
+      <button>Pausa o projeto até o mês seguinte começar</button>
+      <button>Apaga os recursos criados pelo Terraform</button>
+    </div>
+    <p class="feedback" data-ok="Isso. Quem pausa é o spend limit, que exige o plano pago (registro 0013)." data-bad="Não. Budget só avisa. Pausar o projeto é o spend limit, que exige o plano pago."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">6. Por que o deploy da etapa 11 ficou sem OIDC nesta conta?</p>
+    <div class="options">
+      <button>Porque o GitHub não emite token OIDC para repositório público</button>
+      <button>Porque uma SCP da AWS nega criar provedores no IAM</button>
+      <button>Porque o OIDC só funciona na região us-east-1</button>
+    </div>
+    <p class="feedback" data-ok="Certo. A SCP nega iam:*Provider*. A alternativa é decisão sua até a aula 0014." data-bad="Não. A conta 'AWS (new)' tem uma SCP gerenciada que nega iam:*Provider*, e ela não pode ser mudada."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">7. O .terraform.lock.hcl vai para o git pelo mesmo motivo que...</p>
+    <div class="options">
+      <button>o .env, para a CI ter as mesmas variáveis do dev</button>
+      <button>o terraform.tfstate, para não perder os recursos</button>
+      <button>o uv.lock, para a troca de versão aparecer num PR</button>
+    </div>
+    <p class="feedback" data-ok="Isso. Versão fixada e revisada, como na cadeia de suprimentos da aula 0005." data-bad="Não. O .env e o state nunca vão para o git. O lock file é como o uv.lock: fixa a versão e torna a troca visível num PR."></p>
+  </div>
+</div>
+
+<footer class="lesson">
+  <p><strong>Fonte principal:</strong> <a href="https://developer.hashicorp.com/terraform/language/backend/s3">Terraform: Backend S3</a> e <a href="https://developer.hashicorp.com/terraform/language/files/dependency-lock">Dependency lock file</a>. Para a aula 0013, leia antes <a href="https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager.html">Session Manager</a>.</p>
+  <p><strong>Referência rápida:</strong> <a href="../reference/terraform-aws.html">Terraform e AWS</a> · <a href="../reference/glossario.html">Glossário</a>.</p>
+  <p>O <code>init</code> não achou credencial, o <code>create-bucket</code> reclamou da região ou a trava não apareceu? Pergunte ao Claude no terminal.</p>
+</footer>
+
+</main>
+<script src="../assets/checklist.js"></script>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

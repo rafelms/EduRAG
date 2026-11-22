@@ -1,13 +1,13 @@
 # EduRAG: progresso
 
-> Atualizado em 12/11/2026. Referência: [spec.md](spec.md).
+> Atualizado em 18/11/2026. Referência: [spec.md](spec.md).
 
 ## Resumo
 
 - **Camada A (aplicação):** implementada e **validada ponta a ponta** com PostgreSQL + pgvector e Ollama reais (`qwen2.5:3b` e `nomic-embed-text`). Falta só a sua revisão do código.
 - **Qualidade da recuperação:** funciona, mas o limiar `MIN_SCORE` **não separa bem** perguntas do tema e fora do tema com esse modelo de embeddings (detalhes abaixo). Decisão tomada: aceitar a limitação e documentá-la na spec; quem segura as perguntas fora do tema é o prompt, não o limiar.
 - **Frontend (16/10/2026; na spec como RF09 e T11 desde 19/10/2026):** interface React + Tailwind em `frontend/`, servida por nginx no compose (porta 8080), pensada para o deploy na AWS. Validada ponta a ponta pelo proxy e conferida no navegador em 19/10/2026.
-- **Camada B (operação):** em andamento. **Etapas 0 a 8 da pipeline concluídas**, e com elas os blocos A, B e C (ver [pipeline-plano.md](pipeline-plano.md)). Estão como checks obrigatórios: CI de backend e frontend, `main` protegida, gitleaks (segredos), Semgrep (SAST), Trivy + `npm audit` (dependências vulneráveis) e build + `trivy image` + checagem de não-root nas duas imagens. Cadeia de suprimentos: actions fixadas por SHA, Dependabot ativo e cooldown de 7 dias no uv e no Dependabot (PR #38, 04/11). Desde o PR #40 (04/11), cada merge na `main` publica as duas imagens no GHCR com a tag do SHA. Próxima: etapa 9 (segurança da aplicação antes de expor).
+- **Camada B (operação):** em andamento. **Etapas 0 a 8 da pipeline concluídas**, e com elas os blocos A, B e C (ver [pipeline-plano.md](pipeline-plano.md)). Estão como checks obrigatórios: CI de backend e frontend, `main` protegida, gitleaks (segredos), Semgrep (SAST), Trivy + `npm audit` (dependências vulneráveis) e build + `trivy image` + checagem de não-root nas duas imagens. Cadeia de suprimentos: actions fixadas por SHA, Dependabot ativo e cooldown de 7 dias no uv e no Dependabot (PR #38, 04/11). Desde o PR #40 (04/11), cada merge na `main` publica as duas imagens no GHCR com a tag do SHA. A etapa 9 terminou em 13/11 (segredos, teto de gastos e o Claude Sonnet 5 como LLM). **Em andamento: etapa 10 (Terraform na AWS).** A aula 0011 foi feita em 18/11: conta "AWS (new)" no plano gratuito, região `us-east-2`, Budget `edurag-mensal`, `aws login` pelo Builder ID e ferramentas instaladas. Próxima: aula 0012 (bucket do *state* e o primeiro ciclo do Terraform). Decisão pendente até a 0014: como o deploy entra no EC2, já que a conta bloqueia o OIDC.
 
 ## O que foi feito
 
@@ -188,12 +188,12 @@ Ordem sugerida na spec. Cada fase já tem o ponto de encaixe pronto na aplicaç�
 
 **Reta final redefinida em 12/11/2026:** o objetivo é deploy na AWS, Terraform e observabilidade (Prometheus + Grafana), com prod privado e destruído no fim. Por isso a F7 (Terraform) e a F4 (métricas e alertas) entraram no [pipeline-plano.md](pipeline-plano.md) como etapas 10 e 12 a 14, e a F3 ficou reduzida a segredos e teto de gastos.
 
-- [ ] **F2: Pipeline segura** (em andamento: etapas 0 a 9 feitas, com o Claude Sonnet 5 como LLM na nuvem; faltam a infraestrutura e a entrega na AWS (10 e 11), a observabilidade (12 a 14) e o encerramento (15); ver [pipeline-plano.md](pipeline-plano.md)). GitHub Actions com ruff, pytest (serviço Postgres para `TEST_DATABASE_URL`), Semgrep ou Bandit, Trivy, gitleaks, Dependabot e proteção de branch. O repositório já está no GitHub: `rafelms/EduRAG`.
+- [ ] **F2: Pipeline segura** (em andamento: etapas 0 a 9 feitas, com o Claude Sonnet 5 como LLM na nuvem; a 10 começou em 18/11 com o *bootstrap* da conta; faltam o resto da infraestrutura e a entrega na AWS (10 e 11), a observabilidade (12 a 14) e o encerramento (15); ver [pipeline-plano.md](pipeline-plano.md)). GitHub Actions com ruff, pytest (serviço Postgres para `TEST_DATABASE_URL`), Semgrep ou Bandit, Trivy, gitleaks, Dependabot e proteção de branch. O repositório já está no GitHub: `rafelms/EduRAG`.
 - [ ] **F3: Segredos e acesso.** Na trilha: auditoria do histórico (feita), SSM Parameter Store e teto de gastos. Fora do caminho enquanto o prod for privado: SOPS ou Vault, API key ou JWT (middleware em `app/api/`) e rate limiting.
 - [ ] **F4: Observabilidade** (etapas 12 a 14 do plano). `/metrics` para Prometheus e Grafana na trilha; Loki e OpenTelemetry depois. O `request_id` e os logs JSON já existem. Inclui o painel de latência do LLM (veio da Camada A) e um alerta perto do `LLM_TIMEOUT_SECONDS`.
 - [ ] **F5: LLMOps.** Langfuse em `app/adapters/ollama_llm.py`, Ragas na CI (o conjunto de perguntas de referência serve também para calibrar o limiar), defesa contra prompt injection em `app/domain/prompts.py`, mascaramento de CPF e e-mail e custo em tokens. Inclui o experimento de `CHUNK_SIZE` (300 contra 800), medido com o conjunto de referência (veio da Camada A).
 - [ ] **F6: Kubernetes.** k3s ou kind, manifests e Helm; `/health` e `/ready` viram as probes.
-- [ ] **F7: Nuvem e IaC** (etapa 10 do plano, deixou de ser opcional). Terraform para a base da AWS, com portão de IaC na CI.
+- [ ] **F7: Nuvem e IaC** (etapa 10 do plano, deixou de ser opcional). Terraform para a base da AWS, com portão de IaC na CI. Conta pronta em 18/11 (`us-east-2`, Budget, `aws login`, Terraform 1.17.2); próximo é o bucket do *state* (aula 0012).
 
 ## Como retomar
 
