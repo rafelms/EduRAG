@@ -23,7 +23,13 @@
 
 <dl>
   <dt>AWS Budgets</dt>
-  <dd>O serviço de alertas de gasto da AWS. Um alerta só manda e-mail quando o gasto real ou o previsto passa do valor; ele não desliga nada. É grátis e vem antes de qualquer recurso. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
+  <dd>O serviço de alertas de gasto da AWS. Um alerta só manda e-mail quando o gasto real ou o previsto passa do valor; ele não desliga nada. É grátis e vem antes de qualquer recurso. O modelo "custo mensal" exclui créditos e reembolsos, então mede o uso antes do crédito. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
+
+  <dt>AWS Builder ID</dt>
+  <dd>A identidade pessoal com que se entra numa conta da experiência "AWS (new)". É ela que tem o MFA e que faz o <code>aws login</code>; ela substitui o root e o usuário IAM do roteiro original. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a> (registro 0013)</span></dd>
+
+  <dt>Backend (Terraform)</dt>
+  <dd>Onde o Terraform guarda o <em>state</em>. O do EduRAG é o <code>s3</code>, com <code>use_lockfile = true</code>. Ele é configurado no bloco <code>terraform</code> e ligado pelo <code>init</code>. <span class="seen">Aula <a href="../lessons/0012-o-state-no-s3.html">0012</a></span></dd>
 
   <dt>Bypass list</dt>
   <dd>Quem pode ignorar as regras de um ruleset. No <code>protege-main</code>, fica vazia. <span class="seen">Aula <a href="../lessons/0001-protegendo-a-main.html">0001</a></span></dd>
@@ -76,8 +82,11 @@
   <dt>Limite de taxa (rate limiting)</dt>
   <dd>Um máximo de requisições (ou tokens) por intervalo de tempo, por cliente. Protege contra rajadas, mas não contra um gasto lento e constante: para isso existem a cota e o teto de gastos. <span class="seen">Aula <a href="../lessons/0009-antes-de-expor.html">0009</a></span></dd>
 
+  <dt>Lock file do provider (<code>.terraform.lock.hcl</code>)</dt>
+  <dd>Gravado pelo <code>init</code> com a versão e os hashes de cada provider. Vai para o git, como o <code>uv.lock</code>. Por padrão, só tem os hashes da plataforma onde rodou; <code>terraform providers lock -platform=...</code> acrescenta outras. <span class="seen">Aula <a href="../lessons/0012-o-state-no-s3.html">0012</a></span></dd>
+
   <dt>MFA</dt>
-  <dd>Autenticação multifator: além da senha, uma segunda prova (chave de acesso ou código de app). Obrigatória no root e no usuário IAM da trilha. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
+  <dd>Autenticação multifator: além da senha, uma segunda prova (chave de acesso ou código de app). Obrigatória na identidade que entra na conta: no EduRAG, o AWS Builder ID. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
 
   <dt>Menor privilégio</dt>
   <dd>Dar a cada peça só as permissões de que ela precisa. Num workflow, é o bloco <code>permissions</code>. <span class="seen">Aula <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
@@ -98,7 +107,10 @@
   <dd><code>terraform plan</code> compara o código, o <em>state</em> e a conta, e só mostra o que mudaria. <code>terraform apply</code> executa a mudança. Todo <code>apply</code> começa pela leitura do <code>plan</code>. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
 
   <dt>Plano gratuito (AWS)</dt>
-  <dd>O plano das contas criadas a partir de 15/07/2025: até US$ 200 em créditos, 6 meses ou até acabarem, sem passar do limite, só com os tipos de instância elegíveis. Criar uma AWS Organization passa a conta para o plano pago. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
+  <dd>O plano das contas criadas a partir de 15/07/2025: até US$ 200 em créditos, 6 meses ou até acabarem, sem passar do limite, só com os tipos de instância elegíveis. Criar uma AWS Organization passa a conta para o plano pago. A conta do EduRAG tem US$ 100 de crédito. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
+
+  <dt>Projeto (experiência "AWS (new)")</dt>
+  <dd>Uma conta da AWS criada e governada pela própria AWS, dentro de uma Organization que você não administra. Tem região fixa pelo país (<code>us-east-2</code> para o Brasil) e SCPs que não podem ser mudadas. O do EduRAG é o "Next Big Thing". <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a> (registro 0013)</span></dd>
 
   <dt>Portão (gate)</dt>
   <dd>Uma verificação que <em>bloqueia</em>, e não só avisa. Uma ferramenta vira portão quando o job dela entra nos checks obrigatórios. <span class="seen">Aulas <a href="../lessons/0001-protegendo-a-main.html">0001</a>, <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
@@ -107,7 +119,7 @@
   <dd>O plugin que traduz os blocos do Terraform em chamadas à API de um serviço. Aqui, o <code>hashicorp/aws</code>, fixado por versão. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
 
   <dt>Root (conta da AWS)</dt>
-  <dd>A identidade criada com a conta, com poder total, que as políticas do IAM não limitam. Fica com MFA, sem access key, e só entra para tarefa que só ele faz. O dia a dia é com um usuário IAM. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
+  <dd>A identidade criada com a conta, com poder total, que as políticas do IAM não limitam. Fica com MFA, sem access key, e só entra para tarefa que só ele faz. O dia a dia é com um usuário IAM. Num projeto da experiência "AWS (new)", não existe root: o dono é o AWS Builder ID. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
 
   <dt>Scope (do cache do Buildx)</dt>
   <dd>O nome do cache de camadas no <code>type=gha</code>. Builds que dividem o mesmo scope sobrescrevem o cache um do outro; use um por imagem. <span class="seen">Aula <a href="../lessons/0006-build-e-scan-de-imagens.html">0006</a></span></dd>
@@ -129,6 +141,9 @@
 
   <dt>SCA</dt>
   <dd><em>Software Composition Analysis</em>: compara as bibliotecas dos seus lockfiles com um banco de vulnerabilidades conhecidas. O resultado muda com o tempo, mesmo sem commit novo. <span class="seen">Aula <a href="../lessons/0004-vulnerabilidades-com-trivy.html">0004</a></span></dd>
+
+  <dt>SCP (service control policy)</dt>
+  <dd>Uma política da AWS Organization que define o máximo que qualquer identidade de uma conta pode fazer, até a de administrador. Na conta do EduRAG, as SCPs são da AWS e negam, por exemplo, criar provedor OIDC (<code>iam:*Provider*</code>). <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a> (registro 0013)</span></dd>
 
   <dt>SHA (de commit)</dt>
   <dd>O identificador de 40 caracteres de um commit. Numa action, <code>@&lt;sha&gt;</code> é imutável; já uma tag pode ser movida. Em tag anotada, vale o SHA da linha com <code>^{}</code>. <span class="seen">Aulas <a href="../lessons/0004-vulnerabilidades-com-trivy.html">0004</a>, <a href="../lessons/0005-cadeia-de-suprimentos.html">0005</a></span></dd>
@@ -157,8 +172,11 @@
   <dt>Teto de gastos (spend limit)</dt>
   <dd>O máximo que a organização ou um workspace pode gastar na API da Anthropic por mês. Ao estourar, as chamadas falham até o mês virar ou o teto subir. É a última camada contra o gasto, porque não depende do código. <span class="seen">Aula <a href="../lessons/0009-antes-de-expor.html">0009</a></span></dd>
 
+  <dt>Trava do state (state lock)</dt>
+  <dd>Impede que dois comandos mexam no <em>state</em> ao mesmo tempo. No backend S3, é um objeto <code>&lt;key&gt;.tflock</code> criado com <code>use_lockfile = true</code>; o segundo comando falha com "Error acquiring the state lock". <span class="seen">Aula <a href="../lessons/0012-o-state-no-s3.html">0012</a></span></dd>
+
   <dt>Usuário IAM</dt>
-  <dd>Uma identidade criada dentro da conta, com permissões dadas por políticas. O da trilha tem MFA e <code>AdministratorAccess</code>, e nenhuma access key: entra na CLI pelo <code>aws login</code>. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
+  <dd>Uma identidade criada dentro da conta, com permissões dadas por políticas. No roteiro original, teria MFA e <code>AdministratorAccess</code>, e nenhuma access key. Na conta do EduRAG, uma SCP impede dar senha de console a ele, e o papel fica com o AWS Builder ID. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
 
   <dt>Varredura de histórico</dt>
   <dd>Uma análise de todos os commits do repositório, e não só dos novos. Feita uma vez, descobre se algo já vazou. <span class="seen">Aula <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
