@@ -76,6 +76,12 @@
   <dt>IaC (infraestrutura como código)</dt>
   <dd>Descrever servidores, redes e permissões em arquivos versionados, e não em cliques no console. No EduRAG, é o Terraform em <code>infra/</code>: o que nasce pelo <code>apply</code> some pelo <code>destroy</code>. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
 
+  <dt>IMDSv2</dt>
+  <dd>A versão do serviço de metadados da instância que exige um token de sessão antes de responder. No Terraform, é <code>metadata_options { http_tokens = "required" }</code>. O <code>trivy config</code> da aula 0014 cobra essa linha. <span class="seen">Aula <a href="../lessons/0013-uma-maquina-sem-porta.html">0013</a></span></dd>
+
+  <dt>Instance profile</dt>
+  <dd>O "envelope" que entrega uma role do IAM a uma instância EC2. A instância recebe o <em>nome</em> do profile, e o profile aponta para a role. No EduRAG, a role tem só a <code>AmazonSSMManagedInstanceCore</code>. <span class="seen">Aula <a href="../lessons/0013-uma-maquina-sem-porta.html">0013</a></span></dd>
+
   <dt>Imagem base</dt>
   <dd>A imagem do primeiro estágio de um <code>FROM</code> (por exemplo <code>python:3.12-slim</code>). Traz o sistema operacional, e é dele que vêm os pacotes que o <code>trivy image</code> escaneia. <span class="seen">Aula <a href="../lessons/0006-build-e-scan-de-imagens.html">0006</a></span></dd>
 
@@ -157,8 +163,11 @@
   <dt>Rollback</dt>
   <dd>Voltar para a versão anterior quando um deploy quebra. Exige que a versão anterior tenha um nome fixo, como a tag por SHA. <span class="seen">Aula <a href="../lessons/0008-publicar-no-ghcr.html">0008</a></span></dd>
 
+  <dt>Security group</dt>
+  <dd>O firewall de uma instância na AWS: regras de entrada e de saída, só de liberação. O do EduRAG não tem entrada nenhuma e tem uma saída, TCP 443. Criado pelo Terraform, ele nasce <strong>sem</strong> a saída padrão. <span class="seen">Aula <a href="../lessons/0013-uma-maquina-sem-porta.html">0013</a></span></dd>
+
   <dt>Session Manager (SSM)</dt>
-  <dd>O serviço da AWS que abre sessão e túnel até uma instância sem SSH e sem porta de entrada: o agente na máquina chama a AWS de dentro para fora. No Windows, precisa do plugin <code>session-manager-plugin</code>. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a> (uso na 0013)</span></dd>
+  <dd>O serviço da AWS que abre sessão e túnel até uma instância sem SSH e sem porta de entrada: o agente na máquina chama a AWS de dentro para fora. No Windows, precisa do plugin <code>session-manager-plugin</code>. <span class="seen">Aulas <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a> e <a href="../lessons/0013-uma-maquina-sem-porta.html">0013</a></span></dd>
 
   <dt>State (Terraform)</dt>
   <dd>O arquivo que liga cada objeto real da conta ao seu bloco no código. É texto puro: valor secreto em recurso vai parar nele. Fica num bucket S3 versionado, nunca no git. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
@@ -174,6 +183,12 @@
 
   <dt>Trava do state (state lock)</dt>
   <dd>Impede que dois comandos mexam no <em>state</em> ao mesmo tempo. No backend S3, é um objeto <code>&lt;key&gt;.tflock</code> criado com <code>use_lockfile = true</code>; o segundo comando falha com "Error acquiring the state lock". <span class="seen">Aula <a href="../lessons/0012-o-state-no-s3.html">0012</a></span></dd>
+
+  <dt>Túnel do SSM (port forwarding)</dt>
+  <dd>Uma sessão do Session Manager com o documento <code>AWS-StartPortForwardingSession</code>: uma porta do seu computador passa a chegar numa porta da instância, sem porta de entrada aberta. É por ele que se abre a interface e o Grafana. <span class="seen">Aula <a href="../lessons/0013-uma-maquina-sem-porta.html">0013</a></span></dd>
+
+  <dt>user_data</dt>
+  <dd>O script entregue à instância no lançamento. Roda como root, <strong>uma vez</strong>, no primeiro boot, e deixa o log em <code>/var/log/cloud-init-output.log</code>. No EduRAG, instala o Docker e o plugin do compose. <span class="seen">Aula <a href="../lessons/0013-uma-maquina-sem-porta.html">0013</a></span></dd>
 
   <dt>Usuário IAM</dt>
   <dd>Uma identidade criada dentro da conta, com permissões dadas por políticas. No roteiro original, teria MFA e <code>AdministratorAccess</code>, e nenhuma access key. Na conta do EduRAG, uma SCP impede dar senha de console a ele, e o papel fica com o AWS Builder ID. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>

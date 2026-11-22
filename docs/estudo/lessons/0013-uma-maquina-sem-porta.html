@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uma máquina sem porta</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Aula 0013 · Etapa 10 do <a href="../../pipeline-plano.md">pipeline-plano</a> · ~90 min</p>
+  <h1>Uma máquina sem porta</h1>
+  <p class="subtitle">Um EC2 que ninguém alcança de fora e que você abre por um túnel do SSM. Com o tamanho escolhido por medida, e não por chute.</p>
+</header>
+
+<div class="note">
+  <p><strong>Fontes conferidas em 22/11/2026.</strong> Preços de <code>us-east-2</code> tirados do arquivo público que alimenta a página de preços da AWS (publicado em 21/11/2026). Docs do provider lidos na tag <code>v6.73.0</code>.</p>
+  <p><strong>O que muda no mapa:</strong> a interface <em>do EduRAG</em> e a RAM <em>medida no EC2</em> dependem do <code>docker-compose.prod.yml</code>, que é da etapa 11. Nesta aula, o túnel é provado com um nginx de teste, e a RAM é medida na sua máquina antes de escolher o tamanho.</p>
+</div>
+
+<h2>Aquecimento: de memória</h2>
+<p>Sem abrir nada: (1) qual comando mostra o que mudaria sem mudar nada? (2) Onde fica o <code>.tflock</code> e quando ele some? (3) Um <code>SecureString</code> criado pelo Terraform fica em texto puro onde? Confira na <a href="0012-o-state-no-s3.html">aula 0012</a>.</p>
+
+<h2>O desenho</h2>
+
+<div class="flow">
+  <span>você (PowerShell)</span><i>→</i><span>aws ssm start-session</span><i>→</i><span>AWS Systems Manager</span><i>←</i><span>agente do SSM (sai pela 443)</span><i>←</i><span class="gate">EC2: nenhuma porta de entrada</span>
+</div>
+
+<p><strong>Por que nenhuma porta de entrada funciona?</strong> Quem abre a conexão é o agente do SSM, de dentro para fora: "SSM Agent initiates all connections to the Systems Manager service in the cloud". Por isso a máquina não precisa aceitar conexão nenhuma.<span class="source"> (<a href="https://docs.aws.amazon.com/systems-manager/latest/userguide/setup-create-vpc.html">SSM: VPC endpoints</a>)</span> O agente já vem instalado no Amazon Linux 2023.<span class="source"> (<a href="https://docs.aws.amazon.com/systems-manager/latest/userguide/ami-preinstalled-agent.html">AMIs with SSM Agent preinstalled</a>)</span></p>
+
+<p><strong>Mas ele precisa de saída.</strong> O agente fala por HTTPS (443) com <code>ssm</code>, <code>ssmmessages</code> e <code>ec2messages</code> da região.<span class="source"> (<a href="https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-prerequisites.html">Session Manager prerequisites</a>)</span> E a instalação do Docker e o download das imagens também saem pela 443.</p>
+
+<h2>Armadilha: o Terraform apaga a saída padrão</h2>
+
+<p>Um security group criado pelo console nasce com uma regra que libera toda saída. Pelo Terraform, não: "<strong>Terraform will remove this default rule</strong>, and require you specifically re-create it if you desire that rule".<span class="source"> (<a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/security_group">aws_security_group</a>)</span></p>
+
+<p><strong>Aposte:</strong> se você criar o security group sem nenhuma regra de saída, o que acontece com a instância?</p>
+<details>
+  <summary>Resposta</summary>
+  <p>Ela sobe, mas fica muda: o agente não alcança o SSM, então ela nunca aparece como <code>Online</code> e você não entra. O <code>user_data</code> também falha ao baixar o Docker. Por isso a aula pede <strong>uma</strong> regra de saída, só para TCP 443. O DNS da AWS não precisa de regra: "Security groups do not filter traffic destined to and from [...] Amazon Domain Name Services (DNS)".<span class="source"> (<a href="https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html">Security groups</a>)</span></p>
+</details>
+
+<p>A documentação recomenda regras como recursos separados (<code>aws_vpc_security_group_egress_rule</code>), e não blocos <code>egress</code> dentro do grupo. Não misture os dois jeitos.<span class="source"> (<a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/security_group">aws_security_group</a>, notas no topo)</span></p>
+
+<h3>Por que um IPv4 público, se ninguém entra?</h3>
+<p>Para a instância <em>sair</em>. A VPC padrão já tem "a public subnet in each Availability Zone, an internet gateway".<span class="source"> (<a href="https://docs.aws.amazon.com/vpc/latest/userguide/default-vpc.html">Default VPCs</a>)</span> A alternativa sem IP público são os <em>VPC endpoints</em> do SSM (três, obrigatórios)<span class="source"> (<a href="https://docs.aws.amazon.com/systems-manager/latest/userguide/setup-create-vpc.html">SSM: VPC endpoints</a>)</span>, que cobram por hora cada um. O exemplo da página de preços usa US$ 0,01 por hora por ENI<span class="source"> (<a href="https://aws.amazon.com/privatelink/pricing/">PrivateLink pricing</a>)</span>. Ou seja, uns US$ 0,03 por hora, contra US$ 0,005 do IPv4. E sem internet, o Docker não baixa nada do GHCR. O IP público fica, e é o security group que fecha a porta.</p>
+
+<h2>Escolher a máquina: medir antes</h2>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Tipo (elegível no plano gratuito)</th><th>RAM</th><th>US$/hora</th><th>24 h × 30 dias</th><th>3 h × 30 dias</th><th>Serve?</th></tr>
+  <tr><td><code>t3.micro</code></td><td>1 GiB</td><td>0,0104</td><td>7,59</td><td>0,94</td><td>Não: pouca RAM</td></tr>
+  <tr><td><code>t4g.small</code></td><td>2 GiB</td><td>0,0168</td><td>12,26</td><td>1,51</td><td><strong>Não</strong>: ARM, e suas imagens do GHCR são só amd64 (<a href="../learning-records/0010-publicacao-no-ghcr.md">registro 0010</a>)</td></tr>
+  <tr><td><code>t3.small</code></td><td>2 GiB</td><td>0,0208</td><td>15,18</td><td>1,87</td><td>Depende da medida</td></tr>
+  <tr><td><code>c7i-flex.large</code></td><td>4 GiB</td><td>0,0848</td><td>61,90</td><td>7,63</td><td>Depende da medida</td></tr>
+  <tr><td><code>m7i-flex.large</code></td><td>8 GiB</td><td>0,0958</td><td>69,90</td><td>8,62</td><td>Folga para Prometheus e Grafana</td></tr>
+</table>
+</div>
+<p class="source">Preços On-Demand Linux em US East (Ohio), do arquivo da <a href="https://aws.amazon.com/ec2/pricing/on-demand/">página de preços do EC2</a> publicado em 21/11/2026. Elegíveis: <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-free-tier-usage.html">EC2 Free Tier</a>. O <code>t3.medium</code> (4 GiB, US$ 0,0416) não está na lista.</p>
+
+<p><strong>Ligado direto estoura o Budget.</strong> Uma <code>c7i-flex</code> ou <code>m7i-flex</code> ligada o mês todo passa de US$ 60. O crédito paga, mas o <code>edurag-mensal</code> mede <em>antes</em> do crédito (<a href="../learning-records/0013-conta-aws-new-e-ferramentas.md">registro 0013</a>), então o alerta de US$ 15 dispara. Com <code>destroy</code> no fim de cada sessão, a conta fica nos poucos dólares.</p>
+
+<p><strong>Se escolher <code>t3.small</code>:</strong> "T3 instances are launched as unlimited by default"<span class="source"> (<a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/instance">aws_instance</a>)</span>. Em <em>unlimited</em>, CPU acima da linha de base na média de 24 h "is billed for the additional usage"<span class="source"> (<a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/burstable-performance-instances-unlimited-mode-concepts.html">Unlimited mode</a>)</span>. Num T3, ponha <code>credit_specification</code> com <code>cpu_credits = "standard"</code>. Nas <code>-flex</code>, esse bloco não se aplica.</p>
+
+<p><strong>Como decidir:</strong> no passo 2, você mede a RAM da stack rodando no Docker Desktop. Some a RAM dos contêineres, deixe espaço para o sistema e para o Prometheus e o Grafana (etapa 13), e escolha. A escolha é sua.</p>
+
+<h2>As peças do Terraform</h2>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Bloco</th><th>Para quê</th><th>Doc (6.73.0)</th></tr>
+  <tr><td><code>data "aws_vpc"</code> com <code>default = true</code></td><td>Achar a VPC padrão sem copiar ID para o código</td><td><a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/data-sources/vpc">aws_vpc (data)</a></td></tr>
+  <tr><td><code>aws_security_group</code></td><td>O grupo, com <code>name</code>, <code>description</code> e <code>vpc_id</code>. <strong>Nenhum</strong> <code>ingress</code></td><td><a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/security_group">security_group</a></td></tr>
+  <tr><td><code>aws_vpc_security_group_egress_rule</code></td><td>A única regra: saída TCP 443 (<code>ip_protocol</code>, <code>from_port</code>, <code>to_port</code>, <code>cidr_ipv4</code>)</td><td><a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/vpc_security_group_egress_rule">egress_rule</a></td></tr>
+  <tr><td><code>data "aws_iam_policy_document"</code></td><td>A política de confiança: o serviço <code>ec2.amazonaws.com</code> pode fazer <code>sts:AssumeRole</code></td><td><a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/data-sources/iam_policy_document">iam_policy_document</a></td></tr>
+  <tr><td><code>aws_iam_role</code></td><td>A identidade da máquina (<code>assume_role_policy</code> recebe o <code>.json</code> do bloco acima)</td><td><a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/iam_role">iam_role</a></td></tr>
+  <tr><td><code>aws_iam_role_policy_attachment</code></td><td>Pendura a política gerenciada <code>AmazonSSMManagedInstanceCore</code> na role</td><td><a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/iam_role_policy_attachment">role_policy_attachment</a></td></tr>
+  <tr><td><code>aws_iam_instance_profile</code></td><td>O "envelope" que entrega a role ao EC2 (<code>name</code>, <code>role</code>)</td><td><a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/iam_instance_profile">iam_instance_profile</a></td></tr>
+  <tr><td><code>aws_instance</code></td><td>A máquina (argumentos na tabela abaixo)</td><td><a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/instance">instance</a></td></tr>
+  <tr><td><code>output</code></td><td>Mostra no fim do <code>apply</code> o ID e o IP público, para os comandos de prova</td><td><a href="https://developer.hashicorp.com/terraform/language/values/outputs">Output values</a></td></tr>
+</table>
+</div>
+
+<p><strong>Role × instance profile:</strong> a role é a identidade com permissões. O EC2 não recebe a role direto: recebe um <em>instance profile</em> que aponta para ela. A política <code>AmazonSSMManagedInstanceCore</code> é a indicada pela AWS para a instância falar com o SSM.<span class="source"> (<a href="https://docs.aws.amazon.com/systems-manager/latest/userguide/setup-instance-permissions.html">SSM: instance permissions</a>)</span> O ARN dela é <code>arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore</code>.</p>
+
+<h3>Os argumentos do <code>aws_instance</code> que importam</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Argumento</th><th>Valor no EduRAG</th><th>Por quê</th></tr>
+  <tr><td><code>ami</code></td><td><code>"resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"</code></td><td>A AWS resolve o AL2023 mais novo no lançamento; é o exemplo da própria doc</td></tr>
+  <tr><td><code>instance_type</code></td><td>o que você escolher</td><td>Passo 3</td></tr>
+  <tr><td><code>iam_instance_profile</code></td><td>o <code>name</code> do profile</td><td>"Specified as the name of the Instance Profile"</td></tr>
+  <tr><td><code>vpc_security_group_ids</code></td><td>lista com o ID do seu grupo</td><td>Sem isso, entra o grupo padrão da VPC</td></tr>
+  <tr><td><code>user_data</code></td><td><code>file("${path.module}/user_data.sh")</code></td><td>Script do primeiro boot (abaixo)</td></tr>
+  <tr><td><code>user_data_replace_on_change</code></td><td><code>true</code></td><td>Sem ele, mudar o script só faz stop/start, e o script não roda de novo</td></tr>
+  <tr><td><code>root_block_device</code></td><td><code>volume_type = "gp3"</code>, <code>volume_size = 30</code>, <code>encrypted = true</code></td><td><code>encrypted</code> "Defaults to <code>false</code>". A imagem amd64 do Ollama sozinha tem 1,8 GB comprimida</td></tr>
+  <tr><td><code>metadata_options</code></td><td><code>http_tokens = "required"</code></td><td>Exige IMDSv2. O <code>trivy config</code> da aula 0014 cobra isso</td></tr>
+  <tr><td><code>tags</code></td><td><code>Name = "edurag"</code></td><td>O nome que aparece no console. O <code>default_tags</code> põe o resto</td></tr>
+</table>
+</div>
+<p class="source">Fonte: <a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/instance">aws_instance</a> (lido no Markdown da tag <a href="https://github.com/hashicorp/terraform-provider-aws/blob/v6.73.0/website/docs/r/instance.html.markdown">v6.73.0</a>). Tamanho da imagem: <code>docker manifest inspect ollama/ollama:0.12.3</code>.</p>
+
+<h2>O <code>user_data</code>: o primeiro boot</h2>
+
+<p>"By default, user data scripts and cloud-init directives run only during the boot cycle when you first launch an instance." Roda como root ("do not use the sudo command in the script"), precisa começar com <code>#!</code> e deixa o log em <code>/var/log/cloud-init-output.log</code>.<span class="source"> (<a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/user-data.html">EC2: user data</a>)</span></p>
+
+<p>O script <code>infra/user_data.sh</code> tem quatro tarefas:</p>
+<ol>
+  <li>Instalar o Docker pelo <code>dnf</code> (o pacote <code>docker</code> do AL2023) e ligar o serviço com <code>systemctl enable --now</code>.</li>
+  <li>Criar <code>/usr/local/lib/docker/cli-plugins</code>. É onde o Docker procura o plugin do compose para todos os usuários.<span class="source"> (<a href="https://docs.docker.com/compose/install/linux/">Docker: install the plugin manually</a>)</span></li>
+  <li>Baixar o <code>docker-compose-linux-x86_64</code> de uma versão <strong>fixa</strong> para lá, com o nome <code>docker-compose</code>.</li>
+  <li><strong>Conferir o SHA256 antes do <code>chmod +x</code>.</strong> Se não bater, o script para (<code>set -euo pipefail</code> no topo).</li>
+</ol>
+<p><strong>Por que baixar à mão?</strong> Os repositórios padrão do AL2023 não trazem o plugin do compose.<span class="source"> (<a href="https://support.hashicorp.com/hc/en-us/articles/37670352998675-How-to-install-Terraform-Enterprise-supported-Docker-version-on-Amazon-Linux-2023">HashiCorp Support: Docker on AL2023</a>)</span> E baixar binário da internet é cadeia de suprimentos: versão fixa e hash conferido, como na <a href="0005-cadeia-de-suprimentos.html">aula 0005</a>. Pelo seu cooldown de 7 dias, a versão é a <strong>v5.7.1</strong> (11/11). A v5.7.2 e a v5.8.0 saíram em 17/11.</p>
+
+<p><strong>Armadilha do Windows:</strong> o seu git está com <code>core.autocrlf = true</code>. Um <code>.sh</code> salvo com CRLF chega ao Linux como <code>/bin/bash\r</code> e não roda. Crie um <code>.gitattributes</code> na raiz com <code>*.sh text eol=lf</code> e confira no canto do VS Code se o arquivo está em <code>LF</code>.</p>
+
+<h2>Custo desta aula</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Recurso</th><th>Preço</th><th>Parado (<code>stop</code>)</th><th>Depois do <code>destroy</code></th></tr>
+  <tr><td>EC2</td><td>tabela acima, por hora</td><td>0</td><td>0</td></tr>
+  <tr><td>IPv4 público</td><td>US$ 0,005/hora (3,65/mês)</td><td>0: "We release the public IP address when the instance is stopped"</td><td>0</td></tr>
+  <tr><td>Disco gp3 30 GiB</td><td>US$ 0,08 por GB-mês = 2,40/mês</td><td><strong>continua cobrando</strong></td><td>0</td></tr>
+  <tr><td>Role, profile, security group, Session Manager</td><td>0</td><td>0</td><td>0</td></tr>
+</table>
+</div>
+<p class="source"><a href="https://aws.amazon.com/vpc/pricing/">VPC pricing</a> (IPv4) · <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/using-instance-addressing.html">EC2: instance addressing</a> (IP devolvido no stop) · gp3 em Ohio: arquivo da <a href="https://aws.amazon.com/ebs/pricing/">página de preços do EBS</a>, 21/11/2026.</p>
+<p><strong>Recomendação:</strong> <code>terraform destroy</code> no fim de cada sessão. Recriar leva minutos, e é para isso que serve o código. O <code>stop</code> deixa o disco cobrando.</p>
+
+<h2>Mão na massa</h2>
+
+<p>Sem esqueleto. Cada bloco tem o link da documentação. Se travar, peça o esqueleto sem valores.</p>
+
+<ol class="checklist" data-key="0013-ec2">
+  <li><strong>Sessão e branch:</strong> <code>aws login --profile edurag</code> (se venceu), <code>$env:AWS_PROFILE = "edurag"</code>, <code>aws sts get-caller-identity</code>. Depois, <code>git checkout main</code>, <code>git pull</code>, <code>git checkout -b infra/ec2</code>.</li>
+  <li><strong>Medir a RAM, na sua máquina:</strong> <code>docker compose up -d --build</code> (sem nome de serviço), envie um PDF e faça uma pergunta na interface, para o Ollama carregar o <code>nomic-embed-text</code>. Depois rode <code>docker stats --no-stream --format "table {{.Name}}\t{{.MemUsage}}"</code>. Anote cada contêiner e a soma. Por fim, <code>docker compose down</code>.</li>
+  <li><strong>Escolher o tipo:</strong> confira os elegíveis com <code>aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true --query "InstanceTypes[].[InstanceType, MemoryInfo.SizeInMiB, ProcessorInfo.SupportedArchitectures[0]]" --output table</code>. Compare com a sua soma e escolha. Confira também que a VPC padrão existe: <code>aws ec2 describe-vpcs --filters Name=is-default,Values=true --query "Vpcs[].VpcId"</code>.</li>
+  <li><strong><code>infra/rede.tf</code>:</strong> o <code>data "aws_vpc"</code>, o <code>aws_security_group</code> sem entrada e uma <code>aws_vpc_security_group_egress_rule</code> para TCP 443 em <code>0.0.0.0/0</code>.</li>
+  <li><strong><code>infra/iam.tf</code>:</strong> a política de confiança (<code>aws_iam_policy_document</code>), a <code>aws_iam_role</code>, o <code>aws_iam_role_policy_attachment</code> com o ARN da <code>AmazonSSMManagedInstanceCore</code> e o <code>aws_iam_instance_profile</code>. Use nomes que começam com <code>edurag-</code>.</li>
+  <li><strong><code>.gitattributes</code> e o hash do compose:</strong> crie o <code>.gitattributes</code> (<code>*.sh text eol=lf</code>). Pegue o hash publicado: <code>gh api repos/docker/compose/releases/tags/v5.7.1 --jq ".assets[] | select(.name == \"docker-compose-linux-x86_64\") | .digest"</code>.</li>
+  <li><strong><code>infra/user_data.sh</code>:</strong> as quatro tarefas da seção acima. Na conferência, use <code>sha256sum -c</code> com uma linha <code>&lt;hash&gt;  &lt;caminho&gt;</code> (dois espaços).</li>
+  <li><strong><code>infra/ec2.tf</code>:</strong> o <code>aws_instance</code> com os argumentos da tabela (e o <code>credit_specification</code>, se for T3). Crie também <code>infra/outputs.tf</code> com dois <code>output</code>: o <code>id</code> e o <code>public_ip</code> da instância.</li>
+  <li><strong><code>terraform fmt</code>, <code>validate</code> e <code>plan</code>:</strong> quantos recursos ele vai criar? (Conte os blocos <code>resource</code> antes de olhar.) No <code>ami</code>, o plano mostra o <code>resolve:ssm:...</code> ou um ID <code>ami-...</code>?</li>
+  <li><strong><code>terraform apply</code>:</strong> a partir daqui, a hora está correndo. Anote os dois <code>outputs</code> e guarde o ID: <code>$id = terraform output -raw instance_id</code> (use o nome que você deu ao output).</li>
+  <li><strong>A máquina chamou a AWS?</strong> Depois de um ou dois minutos: <code>aws ssm describe-instance-information --query "InstanceInformationList[].[InstanceId, PingStatus, AgentVersion]" --output table</code>. Precisa aparecer <code>Online</code>. Se não aparecer em 5 minutos, volte à regra de saída e ao instance profile.</li>
+  <li><strong>Entrar sem SSH:</strong> <code>aws ssm start-session --target $id</code>. Lá dentro: <code>cloud-init status --long</code>, <code>docker --version</code>, <code>docker compose version</code>, <code>free -m</code> e <code>df -h /</code>. Se o compose não existir, leia <code>sudo tail -50 /var/log/cloud-init-output.log</code>.</li>
+  <li><strong>O túnel:</strong> ainda na sessão, suba um nginx de teste preso ao localhost da máquina: <code>sudo docker run -d --name teste -p 127.0.0.1:8080:8080 nginxinc/nginx-unprivileged:alpine</code>. Saia (<code>exit</code>). No Windows: <code>aws ssm start-session --target $id --document-name AWS-StartPortForwardingSession --parameters portNumber="8080",localPortNumber="8080"</code>. Abra <code>http://localhost:8080</code> no navegador. Depois, Ctrl+C no terminal.<span class="source"> (<a href="https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-sessions-start.html">Start a session: port forwarding</a>, exemplo de Windows)</span></li>
+  <li><strong>O <code>nmap</code> de fora:</strong> com o IP público do output: <code>docker run --rm instrumentisto/nmap -Pn --top-ports 1000 &lt;ip&gt;</code>. O <code>-Pn</code> é preciso porque a máquina não responde nem ao ping. Espere ver as 1000 portas como <code>filtered</code>, nenhum <code>open</code>. A própria porta 8080, que tem o nginx, não aparece aberta.</li>
+  <li><strong><code>terraform destroy</code>:</strong> leia o plano (o mesmo número de recursos do passo 9) e confirme. Depois, <code>aws ec2 describe-instances --filters Name=tag:Projeto,Values=edurag --query "Reservations[].Instances[].State.Name"</code> precisa dizer <code>terminated</code>.</li>
+  <li><strong>O PR <code>infra/ec2</code>:</strong> <code>git status</code> deve listar os <code>.tf</code> novos, o <code>user_data.sh</code> e o <code>.gitattributes</code>. Nada de <code>.terraform/</code> nem de <em>state</em>. Commit e PR.</li>
+</ol>
+
+<h2>Me conte</h2>
+<ul>
+  <li>A tabela do <code>docker stats</code>, a sua soma e o tipo que você escolheu, com o porquê numa frase.</li>
+  <li>O resumo do <code>plan</code> e o que apareceu no <code>ami</code>.</li>
+  <li>A linha do <code>describe-instance-information</code> (pode cortar o ID).</li>
+  <li>As saídas de <code>docker compose version</code> e <code>free -m</code> dentro da máquina.</li>
+  <li>Se a página do nginx abriu pelo túnel, e a linha final do <code>nmap</code>.</li>
+  <li>O link do PR <code>infra/ec2</code>. Eu reviso apontando as linhas.</li>
+</ul>
+
+<h2>Recupere da memória</h2>
+<p>As perguntas 5, 6 e 7 retomam as aulas 0011 e 0012 e o registro 0013.</p>
+
+<div class="quiz">
+  <div class="question" data-answer="1">
+    <p class="prompt">1. Por que o túnel do SSM funciona sem nenhuma porta de entrada?</p>
+    <div class="options">
+      <button>Porque o SSM abre a porta 22 sozinho</button>
+      <button>Porque o agente na máquina chama a AWS</button>
+      <button>Porque o IPv4 público aceita tudo da AWS</button>
+    </div>
+    <p class="feedback" data-ok="Isso. A conexão nasce de dentro para fora, pela 443; o security group não precisa de entrada." data-bad="Não. Nenhuma porta é aberta: o agente do SSM inicia a conexão de dentro para fora, pela 443."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">2. O que o Terraform faz com a regra de saída padrão do security group?</p>
+    <div class="options">
+      <button>Mantém a regra e acrescenta as suas regras</button>
+      <button>Troca a regra por uma saída só 443</button>
+      <button>Apaga a regra; você recria o que precisar</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Sem regra de saída, o agente não chega ao SSM e a máquina nunca fica Online." data-bad="Não. O Terraform remove a regra 'allow all' que a AWS cria; a saída que você quer precisa ser escrita."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">3. Com user_data_replace_on_change = true, mudar o user_data faz o quê?</p>
+    <div class="options">
+      <button>Destrói e recria a instância com o script</button>
+      <button>Roda o script de novo na mesma máquina</button>
+      <button>Só reinicia a máquina com stop e start</button>
+    </div>
+    <p class="feedback" data-ok="Isso. Como o user_data só roda no primeiro boot, recriar é o jeito de o script novo valer." data-bad="Não. O user_data só roda no primeiro boot. Sem a opção, o Terraform faz stop/start e o script novo não roda; com ela, recria a máquina."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">4. Por que o t4g.small, mais barato, não serve para o EduRAG?</p>
+    <div class="options">
+      <button>Porque ele não está entre os tipos elegíveis</button>
+      <button>Porque é ARM e as imagens são amd64</button>
+      <button>Porque não aceita disco gp3 de 30 GiB</button>
+    </div>
+    <p class="feedback" data-ok="Certo. As imagens do GHCR só têm manifest amd64 (registro 0010)." data-bad="Não. Ele é elegível e aceita gp3. O problema é a arquitetura: ARM, e as suas imagens só existem para amd64."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">5. Uma m7i-flex.large ligada o mês todo faz o Budget alertar mesmo com crédito. Por quê?</p>
+    <div class="options">
+      <button>Porque o crédito não vale para o EC2</button>
+      <button>Porque o Budget soma o crédito em dobro</button>
+      <button>Porque o Budget mede o uso sem crédito</button>
+    </div>
+    <p class="feedback" data-ok="Isso. O modelo exclui Credit e Refund (registro 0013): o alerta vê os ~US$ 70." data-bad="Não. O crédito paga, mas o edurag-mensal exclui Credit e Refund do cálculo, então mede o uso real."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">6. Durante o seu apply, um colega roda terraform plan. O que acontece?</p>
+    <div class="options">
+      <button>Falha: o .tflock está com o seu apply</button>
+      <button>Roda normal, porque o plan não escreve nada</button>
+      <button>Espera na fila até o seu apply acabar</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Você viu isso na 0012: 412 PreconditionFailed no PutObject do .tflock. E o plan também pega a trava." data-bad="Não. Na 0012 o plan do segundo terminal falhou com 'Error acquiring the state lock'. Por padrão, ele não espera."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">7. Depois de um stop, o que continua cobrando no EduRAG?</p>
+    <div class="options">
+      <button>A instância e o IPv4 público</button>
+      <button>Só o disco gp3 da instância</button>
+      <button>Nada, até o próximo start dela</button>
+    </div>
+    <p class="feedback" data-ok="Isso. A instância e o IPv4 param de cobrar; o disco existe e cobra. Por isso, destroy no fim da sessão." data-bad="Não. No stop, a AWS devolve o IPv4 e para a cobrança da máquina, mas o disco continua existindo e cobrando."></p>
+  </div>
+</div>
+
+<footer class="lesson">
+  <p><strong>Fonte principal:</strong> <a href="https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager.html">AWS Systems Manager Session Manager</a> e a página <a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/instance">aws_instance</a>. Para a aula 0014, leia antes <a href="https://developer.hashicorp.com/terraform/language/import">Terraform: import</a>.</p>
+  <p><strong>Referência rápida:</strong> <a href="../reference/terraform-aws.html">Terraform e AWS</a> · <a href="../reference/glossario.html">Glossário</a>.</p>
+  <p>A máquina não ficou <code>Online</code>, o compose não instalou ou o túnel não abriu? Pergunte ao Claude no terminal.</p>
+</footer>
+
+</main>
+<script src="../assets/checklist.js"></script>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>
