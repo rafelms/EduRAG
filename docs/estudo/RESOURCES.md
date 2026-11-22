@@ -148,6 +148,22 @@
   Lista do que o security group não filtra (DNS da AWS, metadados, Time Sync). Usar para: entender por que só a 443 basta.
 - [Docker: install Compose manually](https://docs.docker.com/compose/install/linux/)
   Caminho `cli-plugins` e download do binário. Usar para: o `user_data.sh` (o AL2023 não tem o plugin no repositório).
+- [Terraform: Import](https://developer.hashicorp.com/terraform/language/import) e [Generating configuration](https://developer.hashicorp.com/terraform/language/import/generating-configuration)
+  Bloco `import` (`to`, `id`) e `plan -generate-config-out` (experimental, escreve o HCL). Usar para: trazer o Budget para o código (aula 0014).
+- [aws_budgets_budget na tag v6.73.0](https://github.com/hashicorp/terraform-provider-aws/blob/v6.73.0/website/docs/r/budgets_budget.html.markdown)
+  Argumentos, `filter_expression`, `notification` e o ID de import `AccountID:BudgetName`. Usar para: aula 0014.
+- [Terraform: lifecycle](https://developer.hashicorp.com/terraform/language/meta-arguments/lifecycle) e [removed block](https://developer.hashicorp.com/terraform/language/block/removed)
+  `prevent_destroy` (o plano que apagaria falha) e `removed` com `destroy = false` (larga sem apagar). Usar para: proteger o Budget e a etapa 15.
+- [Terraform: Variables](https://developer.hashicorp.com/terraform/language/values/variables)
+  `terraform.tfvars` carregado sozinho, `sensitive`. Usar para: e-mail fora do repositório público.
+- [Terraform: fmt](https://developer.hashicorp.com/terraform/cli/commands/fmt) e [validate](https://developer.hashicorp.com/terraform/cli/commands/validate)
+  `-check -recursive`; `validate` depois de `init -backend=false`, sem credencial. Usar para: o job `iac`.
+- [setup-terraform](https://github.com/hashicorp/setup-terraform)
+  Entradas `terraform_version` e `terraform_wrapper`. v4.0.1 de 12/05/2026, tag leve (commit `dfe3c3f8…`). Usar para: o job `iac`.
+- [Trivy v0.76.1: misconfiguration, config](https://github.com/aquasecurity/trivy/blob/v0.76.1/docs/guide/scanner/misconfiguration/config/config.md)
+  "Filtering resources by inline comments": `#trivy:ignore:<ID>` na linha acima do recurso e `:exp:aaaa-mm-dd` para a exceção vencer. (A página em trivy.dev monta o texto por JavaScript; o Markdown da tag é legível.) Usar para: a exceção da saída 443.
+- [AVD: AWS-0104](https://avd.aquasec.com/misconfig/aws-0104) e [AWS-0107](https://avd.aquasec.com/misconfig/aws-0107)
+  Saída e entrada para qualquer IP. No Trivy 0.76.1, a 0104 é CRITICAL e a 0107 é **HIGH**. Usar para: o portão e a prova da porta 22.
 - Preços públicos da AWS em JSON: [EC2 Ohio](https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/US%20East%20(Ohio)/Linux/index.json) e [EBS](https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ebs.json)
   O arquivo que a página de preços carrega por script (baixar com `curl --compressed`). Usar para: conferir preço por região sem a Calculator.
 
@@ -174,11 +190,12 @@
 - A página de Rate limits da Anthropic não diz se os alertas de gasto do workspace chegam por e-mail nem a quem. Conferir na tela, na aula 0009.
 - A estimativa de custo por pergunta (aula 0009) não inclui os tokens de raciocínio do modelo: medir com o `usage` real na aula 0010.
 - ~~Se o AWS Budgets conta o gasto **antes** ou **depois** dos créditos do plano gratuito.~~ Observado em 18/11/2026: o modelo "custo mensal" exclui `Credit` e `Refund`, então conta **antes** dos créditos (registro 0013).
-- Se o Terraform consegue fazer `import` do Budget numa conta "AWS (new)" (as SCPs parecem liberar `budgets`, mas não testei). Conferir na aula 0014.
+- ~~Se o Terraform consegue fazer `import` do Budget numa conta "AWS (new)".~~ Testado em 22/11/2026 (só `plan`, *state* local): lê e gera o HCL. **Ainda não testado:** se o `apply` consegue pôr as tags do `default_tags` no Budget (`budgets:TagResource` na SCP).
 - Se a SCP do plano gratuito libera `iam:CreateUser` e `iam:CreateAccessKey` na prática: a lista de negação não os cita, mas não testei. Só importa se ele escolher a opção (a) do deploy.
 - Se o plano gratuito **recusa** lançar um tipo não elegível (como o `t3.medium`) ou só cobra dos créditos. A página diz "You can't exceed your Free Tier limits", sem detalhar; o FAQ só diz que o plano não dá acesso ao que "would immediately consume the entire Free Tier credit amount". A aula 0013 usa só elegíveis.
 - Documentação oficial da HashiCorp sobre a versão mínima do Terraform e do provider que leem o `aws login`: só achei fonte de terceiros.
 - ~~Os preços exatos de gp3 em `us-east-1`.~~ Resolvido em 22/11/2026 pelo JSON público de preços: gp3 em Ohio custa US$ 0,08 por GB-mês.
-- Se o `ami = "resolve:ssm:..."` faz o `plan` propor recriar a instância quando sai um AL2023 novo: a doc não diz. A aula 0013 manda ele olhar o que o `plan` mostra no `ami`.
+- ~~Se o `ami = "resolve:ssm:..."` faz o `plan` propor recriar a instância.~~ Pergunta superada em 22/11/2026: com o provider 6.73.0, o `resolve:ssm:` nem chega a lançar (o `DescribeImages` exige `ami-...`). Com `data "aws_ssm_parameter"`, AMI nova → o `plan` propõe recriar.
+- Se o `trivy-fs` (scanners padrão do `fs`) também leria os `.tf`: não conferi. O portão de IaC usa o `trivy config` explícito.
 - Preço por hora de um *interface VPC endpoint* em Ohio: a página do PrivateLink só mostra US$ 0,01 num exemplo, sem região.
 - [GitHub Status](https://www.githubstatus.com): primeiro lugar a olhar quando os checks ficam presos em *Queued* sem log (foi um incidente do Actions no PR #6).

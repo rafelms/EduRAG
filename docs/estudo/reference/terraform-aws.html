@@ -10,9 +10,9 @@
 <main>
 
 <header class="lesson">
-  <p class="kicker">Referência · aulas <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a>, <a href="../lessons/0012-o-state-no-s3.html">0012</a> e <a href="../lessons/0013-uma-maquina-sem-porta.html">0013</a> · cresce até a 0014</p>
+  <p class="kicker">Referência · aulas <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a>, <a href="../lessons/0012-o-state-no-s3.html">0012</a> , <a href="../lessons/0013-uma-maquina-sem-porta.html">0013</a> e <a href="../lessons/0014-dois-states-e-um-portao.html">0014</a> · cresce até a 0015</p>
   <h1>Terraform e AWS</h1>
-  <p class="subtitle">Versões, comandos, custos e armadilhas da etapa 10. Conferido em 13/11/2026; conta, região e state atualizados em 18/11/2026; custos de Ohio e EC2 em 22/11/2026.</p>
+  <p class="subtitle">Versões, comandos, custos e armadilhas da etapa 10. Conferido em 13/11/2026; conta, região e state atualizados em 18/11/2026; custos de Ohio, EC2, import e portão de IaC em 22/11/2026.</p>
 </header>
 
 <h2>Versões</h2>
@@ -23,6 +23,8 @@
   <tr><td>Provider <code>hashicorp/aws</code></td><td>6.73.0</td><td>Fixe com <code>required_providers</code></td></tr>
   <tr><td>AWS CLI v2</td><td>≥ 2.32.0</td><td>Mínimo para o <code>aws login</code></td></tr>
   <tr><td>Session Manager plugin</td><td>a mais recente</td><td>Só funciona no PowerShell e no cmd</td></tr>
+  <tr><td><code>hashicorp/setup-terraform</code></td><td>v4.0.1</td><td>Na CI; fixe por SHA (<code>dfe3c3f8…</code>)</td></tr>
+  <tr><td>Trivy</td><td>0.76.1</td><td>O mesmo do <code>trivy-fs</code>; o <code>config</code> lê o Terraform</td></tr>
 </table>
 </div>
 
@@ -84,7 +86,7 @@ aws s3api list-object-versions --bucket &lt;nome&gt; --prefix &lt;key&gt;</code>
 <h2>Lock file e git</h2>
 <ul>
   <li><code>.terraform.lock.hcl</code> <strong>vai</strong> para o git (é o <code>uv.lock</code> do Terraform). <code>init -upgrade</code> troca a versão.</li>
-  <li>Por padrão, só traz os hashes da sua plataforma. Para a CI: <code>terraform providers lock -platform=windows_amd64 -platform=linux_amd64</code>.</li>
+  <li>Traz um hash <code>h1:</code> da sua plataforma e os <code>zh:</code> que o registry publica para todas. Testado em 22/11/2026: o lock feito no Windows serviu para o <code>init -backend=false</code> no Linux, sem mudar. Se um dia a CI reclamar de checksum: <code>terraform providers lock -platform=windows_amd64 -platform=linux_amd64</code>.</li>
   <li>Fora do git: <code>.terraform/</code>, <code>*.tfstate</code>, <code>*.tfstate.*</code>, <code>*.tfvars</code>, <code>crash.log</code> e planos salvos.</li>
 </ul>
 
@@ -115,7 +117,7 @@ aws s3api list-object-versions --bucket &lt;nome&gt; --prefix &lt;key&gt;</code>
   <tr><td><code>aws_iam_role</code> + <code>aws_iam_policy_document</code></td><td>Confiança: <code>ec2.amazonaws.com</code> faz <code>sts:AssumeRole</code></td></tr>
   <tr><td><code>aws_iam_role_policy_attachment</code></td><td><code>arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore</code></td></tr>
   <tr><td><code>aws_iam_instance_profile</code></td><td><code>role</code> = nome da role; o EC2 recebe o <strong>nome</strong> do profile</td></tr>
-  <tr><td><code>aws_instance</code></td><td><code>ami = "resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"</code>, <code>user_data</code> + <code>user_data_replace_on_change = true</code>, <code>root_block_device</code> gp3 30 GiB <code>encrypted = true</code>, <code>metadata_options { http_tokens = "required" }</code>; em T3, <code>credit_specification { cpu_credits = "standard" }</code></td></tr>
+  <tr><td><code>aws_instance</code></td><td><code>ami = data.aws_ssm_parameter.al2023.insecure_value</code> (o parâmetro <code>/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64</code>; <strong>não</strong> <code>resolve:ssm:</code>, que quebra no <code>apply</code>), <code>user_data</code> + <code>user_data_replace_on_change = true</code>, <code>root_block_device</code> gp3 30 GiB <code>encrypted = true</code>, <code>metadata_options { http_tokens = "required" }</code>; em T3, <code>credit_specification { cpu_credits = "standard" }</code></td></tr>
 </table>
 </div>
 <pre><code>aws ssm describe-instance-information --query "InstanceInformationList[].[InstanceId, PingStatus]" --output table
@@ -123,6 +125,49 @@ aws ssm start-session --target &lt;id&gt;
 aws ssm start-session --target &lt;id&gt; --document-name AWS-StartPortForwardingSession --parameters portNumber="8080",localPortNumber="8080"
 docker run --rm instrumentisto/nmap -Pn --top-ports 1000 &lt;ip público&gt;</code></pre>
 <p><code>user_data</code>: roda uma vez, no primeiro boot, como root, e o log fica em <code>/var/log/cloud-init-output.log</code>. Docker pelo <code>dnf install -y docker</code>. O plugin do compose não está nos repositórios do AL2023: binário de versão fixa em <code>/usr/local/lib/docker/cli-plugins/docker-compose</code>, com o SHA256 conferido.</p>
+
+<h2>Dois states: o que sobrevive ao <code>destroy</code> (aula 0014)</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Pasta (root module)</th><th><code>key</code> no bucket</th><th>O que tem</th><th>Ciclo de vida</th></tr>
+  <tr><td><code>infra/</code></td><td><code>prod/terraform.tfstate</code></td><td>EC2, rede, IAM</td><td><code>apply</code> e <code>destroy</code> a cada sessão</td></tr>
+  <tr><td><code>infra/conta/</code></td><td><code>conta/terraform.tfstate</code></td><td>Budget <code>edurag-mensal</code></td><td>Fica; <code>prevent_destroy = true</code></td></tr>
+</table>
+</div>
+<pre><code># import.tf (apague depois do apply: tem o ID da conta)
+import {
+  to = aws_budgets_budget.mensal
+  id = "&lt;conta&gt;:edurag-mensal"        # AccountID:BudgetName
+}
+
+terraform plan -generate-config-out=generated.tf   # escreve o HCL; experimental
+terraform plan                                     # depois de limpar: 1 to import, 1 to change (só tags_all)
+terraform plan -destroy                            # com prevent_destroy: "Instance cannot be destroyed"</code></pre>
+<ul>
+  <li>O HCL gerado traz <strong>e-mail e ID da conta</strong>: tire o <code>account_id</code> e passe o e-mail para uma variável com valor no <code>terraform.tfvars</code> (fora do git).</li>
+  <li>Saem também <code>tags_all</code>, <code>tags = {}</code>, <code>billing_view_arn = null</code>, <code>match_options = []</code>, <code>subscriber_sns_topic_arns = []</code> e <code>time_period_end = "2087-06-15_00:00"</code>. Ficam o <code>filter_expression</code> (exclui <code>Credit</code> e <code>Refund</code>) e os três <code>notification</code>.</li>
+  <li>Variável com <code>sensitive = true</code> esconde o conteúdo dos blocos no <code>plan</code>. E-mail não é segredo: deixe sem.</li>
+  <li>Para largar um recurso sem apagar (etapa 15): bloco <code>removed { from = ...  lifecycle { destroy = false } }</code>.</li>
+</ul>
+
+<h2>Portão de IaC (aula 0014)</h2>
+<pre><code>terraform fmt -check -recursive infra
+terraform -chdir=infra init -backend=false -input=false
+terraform -chdir=infra validate
+terraform -chdir=infra/conta init -backend=false -input=false
+terraform -chdir=infra/conta validate
+trivy config --severity HIGH,CRITICAL --exit-code 1 infra</code></pre>
+<div class="table-wrap">
+<table>
+  <tr><th>ID (Trivy 0.76.1)</th><th>Severidade</th><th>O que é</th><th>No EduRAG</th></tr>
+  <tr><td><code>AWS-0104</code></td><td>CRITICAL</td><td>Saída para qualquer IP</td><td>A 443 para <code>0.0.0.0/0</code>: exceção justificada, com validade</td></tr>
+  <tr><td><code>AWS-0107</code></td><td><strong>HIGH</strong></td><td>Entrada de qualquer IP</td><td>A prova: porta 22 aberta. Um filtro só de CRITICAL deixaria passar</td></tr>
+</table>
+</div>
+<pre><code># Saida 443 para a internet: SSM, dnf e GHCR nao tem faixa fixa de IP.
+#trivy:ignore:AWS-0104:exp:AAAA-MM-DD
+resource "aws_vpc_security_group_egress_rule" "https" {</code></pre>
+<p>Depois da data, a exceção deixa de valer e o achado volta a barrar (testado). Nada de <code>.trivyignore</code> global: ele vale para todo recurso.</p>
 
 <h2>Desligar quando não estiver estudando</h2>
 <pre><code>aws ec2 stop-instances --instance-ids &lt;id&gt; --profile edurag    # pausa: só o disco cobra
@@ -145,10 +190,13 @@ terraform destroy                                              # some tudo o que
   <li><strong>T3 nasce <em>unlimited</em>:</strong> CPU acima da linha de base cobra à parte. Use <code>cpu_credits = "standard"</code>.</li>
   <li><strong><code>.sh</code> com CRLF:</strong> com <code>core.autocrlf = true</code>, o script chega ao Linux como <code>/bin/bash\r</code>. <code>.gitattributes</code>: <code>*.sh text eol=lf</code>.</li>
   <li><strong>Mudar o <code>user_data</code></strong> sem <code>user_data_replace_on_change</code> só faz stop/start, e o script não roda de novo.</li>
+  <li><strong><code>ami = "resolve:ssm:..."</code></strong> passa no <code>validate</code> e no <code>plan</code>, mas o <code>apply</code> falha com <code>InvalidAMIID.Malformed</code>: o provider 6.73.0 chama o <code>DescribeImages</code> antes de lançar. Use <code>data "aws_ssm_parameter"</code> + <code>insecure_value</code>. Efeito: AMI nova publicada → o <code>plan</code> propõe recriar a máquina.</li>
+  <li><strong><code>plan</code> verde não prova o <code>apply</code>:</strong> várias validações só acontecem quando o provider chama a API para valer.</li>
+  <li><strong><code>destroy</code> leva tudo do <em>state</em>:</strong> o que precisa sobreviver (o Budget) fica em outro root module, com outro <code>key</code>.</li>
   <li><strong>Trava do <em>state</em>:</strong> um <code>apply</code> esperando o <code>yes</code> já segura a trava. Se um comando morrer e a trava ficar, <code>terraform force-unlock &lt;id&gt;</code>, só com certeza de que ninguém mais está rodando.</li>
 </ul>
 
-<p class="source">Fontes: <a href="https://developer.hashicorp.com/terraform/language/state">Terraform: State</a> · <a href="https://developer.hashicorp.com/terraform/language/backend/s3">Backend S3</a> · <a href="https://developer.hashicorp.com/terraform/language/manage-sensitive-data">Sensitive data</a> · <a href="https://docs.aws.amazon.com/signin/latest/userguide/command-line-sign-in.html">aws login</a> · <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/how-ec2-instance-stop-start-works.html">EC2 stop/start</a> · <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-free-tier-usage.html">EC2 Free Tier</a> · <a href="https://docs.aws.amazon.com/singlesignon/latest/userguide/enable-identity-center.html">Identity Center</a> · <a href="https://aws.amazon.com/vpc/pricing/">VPC pricing</a> · <a href="https://developer.hashicorp.com/terraform/language/files/dependency-lock">Dependency lock file</a> · <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/create-bucket-overview.html">S3: creating a bucket</a> · <a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/instance">aws_instance</a> · <a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/security_group">aws_security_group</a> · <a href="https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-sessions-start.html">SSM: port forwarding</a> · <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/user-data.html">EC2 user data</a> · <a href="https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html">Security groups</a></p>
+<p class="source">Fontes: <a href="https://developer.hashicorp.com/terraform/language/state">Terraform: State</a> · <a href="https://developer.hashicorp.com/terraform/language/backend/s3">Backend S3</a> · <a href="https://developer.hashicorp.com/terraform/language/manage-sensitive-data">Sensitive data</a> · <a href="https://docs.aws.amazon.com/signin/latest/userguide/command-line-sign-in.html">aws login</a> · <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/how-ec2-instance-stop-start-works.html">EC2 stop/start</a> · <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-free-tier-usage.html">EC2 Free Tier</a> · <a href="https://docs.aws.amazon.com/singlesignon/latest/userguide/enable-identity-center.html">Identity Center</a> · <a href="https://aws.amazon.com/vpc/pricing/">VPC pricing</a> · <a href="https://developer.hashicorp.com/terraform/language/files/dependency-lock">Dependency lock file</a> · <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/create-bucket-overview.html">S3: creating a bucket</a> · <a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/instance">aws_instance</a> · <a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/security_group">aws_security_group</a> · <a href="https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-sessions-start.html">SSM: port forwarding</a> · <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/user-data.html">EC2 user data</a> · <a href="https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html">Security groups</a> · <a href="https://developer.hashicorp.com/terraform/language/import">Import</a> · <a href="https://developer.hashicorp.com/terraform/language/import/generating-configuration">Generating configuration</a> · <a href="https://developer.hashicorp.com/terraform/language/meta-arguments/lifecycle">lifecycle</a> · <a href="https://developer.hashicorp.com/terraform/language/block/removed">removed</a> · <a href="https://github.com/hashicorp/terraform-provider-aws/blob/v6.73.0/website/docs/r/budgets_budget.html.markdown">aws_budgets_budget</a> · <a href="https://github.com/aquasecurity/trivy/blob/v0.76.1/docs/guide/scanner/misconfiguration/config/config.md">Trivy: misconfiguration</a> · <a href="https://github.com/hashicorp/setup-terraform">setup-terraform</a></p>
 
 <p><a href="glossario.html">Glossário</a> · <a href="publicacao-ghcr.html">Publicação no GHCR</a> · <a href="exposicao-segura.html">Exposição segura</a></p>
 
