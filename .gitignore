@@ -6,3 +6,9 @@ __pycache__/
 .ruff_cache/
 .coverage
 docker-compose.override.yml
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+crash.log
+*.tfplan
