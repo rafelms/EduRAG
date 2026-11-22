@@ -80,6 +80,7 @@
   <tr><td><code>aws_iam_role</code></td><td>A identidade da máquina (<code>assume_role_policy</code> recebe o <code>.json</code> do bloco acima)</td><td><a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/iam_role">iam_role</a></td></tr>
   <tr><td><code>aws_iam_role_policy_attachment</code></td><td>Pendura a política gerenciada <code>AmazonSSMManagedInstanceCore</code> na role</td><td><a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/iam_role_policy_attachment">role_policy_attachment</a></td></tr>
   <tr><td><code>aws_iam_instance_profile</code></td><td>O "envelope" que entrega a role ao EC2 (<code>name</code>, <code>role</code>)</td><td><a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/iam_instance_profile">iam_instance_profile</a></td></tr>
+  <tr><td><code>data "aws_ssm_parameter"</code></td><td>Lê o ID da AMI mais nova do AL2023 no parâmetro público da AWS</td><td><a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/data-sources/ssm_parameter">ssm_parameter (data)</a></td></tr>
   <tr><td><code>aws_instance</code></td><td>A máquina (argumentos na tabela abaixo)</td><td><a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/instance">instance</a></td></tr>
   <tr><td><code>output</code></td><td>Mostra no fim do <code>apply</code> o ID e o IP público, para os comandos de prova</td><td><a href="https://developer.hashicorp.com/terraform/language/values/outputs">Output values</a></td></tr>
 </table>
@@ -91,7 +92,7 @@
 <div class="table-wrap">
 <table>
   <tr><th>Argumento</th><th>Valor no EduRAG</th><th>Por quê</th></tr>
-  <tr><td><code>ami</code></td><td><code>"resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"</code></td><td>A AWS resolve o AL2023 mais novo no lançamento; é o exemplo da própria doc</td></tr>
+  <tr><td><code>ami</code></td><td><code>data.aws_ssm_parameter.al2023.insecure_value</code>, lendo <code>/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64</code></td><td>O Terraform lê o parâmetro público e passa o ID do AL2023 mais novo. Veja a correção abaixo</td></tr>
   <tr><td><code>instance_type</code></td><td>o que você escolher</td><td>Passo 3</td></tr>
   <tr><td><code>iam_instance_profile</code></td><td>o <code>name</code> do profile</td><td>"Specified as the name of the Instance Profile"</td></tr>
   <tr><td><code>vpc_security_group_ids</code></td><td>lista com o ID do seu grupo</td><td>Sem isso, entra o grupo padrão da VPC</td></tr>
@@ -103,6 +104,11 @@
 </table>
 </div>
 <p class="source">Fonte: <a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/instance">aws_instance</a> (lido no Markdown da tag <a href="https://github.com/hashicorp/terraform-provider-aws/blob/v6.73.0/website/docs/r/instance.html.markdown">v6.73.0</a>). Tamanho da imagem: <code>docker manifest inspect ollama/ollama:0.12.3</code>.</p>
+
+<div class="note">
+  <p><strong>Correção (22/11/2026, no primeiro <code>apply</code>):</strong> a versão original desta aula mandava usar <code>ami = "resolve:ssm:..."</code>. O <code>validate</code> e o <code>plan</code> aceitaram, mas o <code>apply</code> falhou com <code>InvalidAMIID.Malformed: Invalid id: "resolve:ssm:..." (expecting "ami-...")</code>. O provider 6.73.0 chama o <code>DescribeImages</code> <em>antes</em> de lançar a máquina, e essa API só aceita um ID <code>ami-...</code>.</p>
+  <p>A forma que funciona é ler o parâmetro com um <code>data "aws_ssm_parameter"</code> (<a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/data-sources/ssm_parameter">doc</a>) e usar o <code>insecure_value</code>. O <code>value</code> vem marcado como <em>sensitive</em>, e o plano mostraria <code>(sensitive value)</code> no lugar do ID, que é público. Efeito colateral: quando a AWS publica uma AMI nova, o próximo <code>plan</code> propõe recriar a máquina. Com <code>destroy</code> a cada sessão, isso não pesa. A lição: o <code>plan</code> não conversa com a API do jeito que o <code>apply</code> conversa, e passar no <code>plan</code> não garante que o <code>apply</code> funcione.</p>
+</div>
 
 <h2>O <code>user_data</code>: o primeiro boot</h2>
 
@@ -145,7 +151,7 @@
   <li><strong><code>.gitattributes</code> e o hash do compose:</strong> crie o <code>.gitattributes</code> (<code>*.sh text eol=lf</code>). Pegue o hash publicado: <code>gh api repos/docker/compose/releases/tags/v5.7.1 --jq ".assets[] | select(.name == \"docker-compose-linux-x86_64\") | .digest"</code>.</li>
   <li><strong><code>infra/user_data.sh</code>:</strong> as quatro tarefas da seção acima. Na conferência, use <code>sha256sum -c</code> com uma linha <code>&lt;hash&gt;  &lt;caminho&gt;</code> (dois espaços).</li>
   <li><strong><code>infra/ec2.tf</code>:</strong> o <code>aws_instance</code> com os argumentos da tabela (e o <code>credit_specification</code>, se for T3). Crie também <code>infra/outputs.tf</code> com dois <code>output</code>: o <code>id</code> e o <code>public_ip</code> da instância.</li>
-  <li><strong><code>terraform fmt</code>, <code>validate</code> e <code>plan</code>:</strong> quantos recursos ele vai criar? (Conte os blocos <code>resource</code> antes de olhar.) No <code>ami</code>, o plano mostra o <code>resolve:ssm:...</code> ou um ID <code>ami-...</code>?</li>
+  <li><strong><code>terraform fmt</code>, <code>validate</code> e <code>plan</code>:</strong> quantos recursos ele vai criar? (Conte os blocos <code>resource</code> antes de olhar.) No <code>ami</code>, o plano mostra o caminho do parâmetro ou um ID <code>ami-...</code>? Por quê?</li>
   <li><strong><code>terraform apply</code>:</strong> a partir daqui, a hora está correndo. Anote os dois <code>outputs</code> e guarde o ID: <code>$id = terraform output -raw instance_id</code> (use o nome que você deu ao output).</li>
   <li><strong>A máquina chamou a AWS?</strong> Depois de um ou dois minutos: <code>aws ssm describe-instance-information --query "InstanceInformationList[].[InstanceId, PingStatus, AgentVersion]" --output table</code>. Precisa aparecer <code>Online</code>. Se não aparecer em 5 minutos, volte à regra de saída e ao instance profile.</li>
   <li><strong>Entrar sem SSH:</strong> <code>aws ssm start-session --target $id</code>. Lá dentro: <code>cloud-init status --long</code>, <code>docker --version</code>, <code>docker compose version</code>, <code>free -m</code> e <code>df -h /</code>. Se o compose não existir, leia <code>sudo tail -50 /var/log/cloud-init-output.log</code>.</li>
