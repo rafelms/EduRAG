@@ -120,6 +120,22 @@
   `msiexec.exe /i https://awscli.amazonaws.com/AWSCLIV2.msi` e `aws --version`. Usar para: aula 0011.
 - [Classmethod: Terraform S3 backend com aws login](https://dev.classmethod.jp/articles/terraform-s3-backend-aws-login/) e a [issue #45316](https://github.com/hashicorp/terraform-provider-aws/issues/45316)
   Testou: provider ≥ 6.23.0 e Terraform ≥ 1.15.0 leem o `login_session`. Fonte não oficial. Usar para: se o `init` não achar credencial.
+- [Supported services for Sign up for AWS (new)](https://docs.aws.amazon.com/accounts/latest/reference/supported-services-sign-up-new.html)
+  O que a experiência com *projects* libera no plano gratuito (EC2, EBS, S3, IAM, STS, Systems Manager, Budgets) e o que fica de fora (Identity Center, Organizations, Managed Grafana). Usar para: antes de planejar qualquer serviço novo.
+- [Managed policies (SCPs e RCPs) for projects](https://docs.aws.amazon.com/accounts/latest/reference/scps-and-rcps-for-projects.html)
+  As SCPs que a AWS aplica e não deixa mudar: `iam:*LoginProfile*`, `iam:*Provider*` (bloqueia o OIDC), `RegionFloor`, Spot, e a lista de serviços do plano gratuito. Usar para: entender um `AccessDenied` estranho.
+- [AWS Regions for your projects](https://docs.aws.amazon.com/accounts/latest/reference/project-regions.html)
+  A região é escolhida pelo país do endereço (Brasil → `us-east-2`) e não muda. Usar para: registro 0013.
+- [Create a spend limit](https://docs.aws.amazon.com/accounts/latest/reference/create-spend-limit.html) e [Budgets na nova experiência](https://docs.aws.amazon.com/cost-management/latest/userguide/bcm-lite-use-budget.html)
+  O spend limit pausa o projeto ao estourar, mas exige o plano pago; o Budget só avisa. Usar para: se a conta for para o plano pago.
+- [Activate advanced AWS features](https://docs.aws.amazon.com/accounts/latest/reference/activate-advanced-features.html)
+  O que muda ao ativar (irreversível, exige plano pago, libera OIDC e regiões, tira o spend limit). Usar para: a decisão do deploy da etapa 11.
+- [S3: Creating a general purpose bucket](https://docs.aws.amazon.com/AmazonS3/latest/userguide/create-bucket-overview.html)
+  Padrões de um bucket novo (bloqueio de acesso público ligado, ACLs desligadas, SSE-S3, versionamento desligado) e regras de nome. Usar para: aula 0012.
+- [Terraform: Dependency lock file](https://developer.hashicorp.com/terraform/language/files/dependency-lock)
+  Versionar o `.terraform.lock.hcl`, `init -upgrade`, `providers lock -platform`. Usar para: aula 0012 e a CI da 0014.
+- [Releases do terraform-provider-aws](https://github.com/hashicorp/terraform-provider-aws/releases)
+  Versão e data de cada release (a lista do registry vem fora de ordem). Usar para: conferir a versão do provider.
 
 ## Sabedoria (comunidades)
 
@@ -143,7 +159,9 @@
 - A página do Container registry diz que imagens públicas podem ser baixadas anonimamente, mas também que é preciso token para "instalar" pacotes públicos. Testar o `docker pull` sem login na etapa 8.
 - A página de Rate limits da Anthropic não diz se os alertas de gasto do workspace chegam por e-mail nem a quem. Conferir na tela, na aula 0009.
 - A estimativa de custo por pergunta (aula 0009) não inclui os tokens de raciocínio do modelo: medir com o `usage` real na aula 0010.
-- Se o AWS Budgets conta o gasto **antes** ou **depois** dos créditos do plano gratuito. Com créditos, um alerta de custo pode nunca disparar. Conferir nas opções do budget (aula 0011).
+- ~~Se o AWS Budgets conta o gasto **antes** ou **depois** dos créditos do plano gratuito.~~ Observado em 18/11/2026: o modelo "custo mensal" exclui `Credit` e `Refund`, então conta **antes** dos créditos (registro 0013).
+- Se o Terraform consegue fazer `import` do Budget numa conta "AWS (new)" (as SCPs parecem liberar `budgets`, mas não testei). Conferir na aula 0014.
+- Se a SCP do plano gratuito libera `iam:CreateUser` e `iam:CreateAccessKey` na prática: a lista de negação não os cita, mas não testei. Só importa se ele escolher a opção (a) do deploy.
 - Se o plano gratuito **recusa** lançar um tipo não elegível (como o `t3.medium`) ou só cobra dos créditos. A página diz "You can't exceed your Free Tier limits", sem detalhar. Conferir na aula 0013.
 - Documentação oficial da HashiCorp sobre a versão mínima do Terraform e do provider que leem o `aws login`: só achei fonte de terceiros.
 - Os preços exatos de gp3 e S3 Standard em `us-east-1`: as páginas oficiais carregam a tabela por script. Conferir na Calculator.

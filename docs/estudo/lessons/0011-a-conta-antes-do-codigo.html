@@ -16,6 +16,10 @@
 </header>
 
 <div class="note">
+  <p><strong>Atualização de 18/11/2026: como a aula foi feita de verdade.</strong> A conta do Rafael é da experiência <strong>"Sign up for AWS (new)"</strong>, com <em>projects</em> (o caso do aviso mais abaixo). Nela, não há root nem usuário IAM com senha: o login é pelo <strong>AWS Builder ID</strong> com MFA, e o <code>aws login</code> entrega a role <code>AccountFullAccessRole</code>. A região é fixada pelo país: <strong><code>us-east-2</code></strong>, e não <code>us-east-1</code>. O provedor OIDC é bloqueado por uma SCP da AWS. Os itens 2, 4, 5 e 7 do checklist foram adaptados, e o <code>Arn</code> da prova termina em <code>assumed-role/...</code>. Detalhes e decisões no <a href="../learning-records/0013-conta-aws-new-e-ferramentas.md">registro 0013</a>.</p>
+</div>
+
+<div class="note">
   <p><strong>Fontes conferidas em 13/11/2026.</strong> Terraform <strong>1.17.2</strong>, provider <code>hashicorp/aws</code> <strong>6.73.0</strong> (publicado em 11/11), AWS CLI v2 (o <code>aws login</code> exige a 2.32.0 ou mais nova). Os preços são de <code>us-east-1</code>. Preço e regra do plano gratuito mudam: confira de novo antes de subir a máquina.</p>
 </div>
 
