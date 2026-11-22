@@ -136,6 +136,20 @@
   Versionar o `.terraform.lock.hcl`, `init -upgrade`, `providers lock -platform`. Usar para: aula 0012 e a CI da 0014.
 - [Releases do terraform-provider-aws](https://github.com/hashicorp/terraform-provider-aws/releases)
   Versão e data de cada release (a lista do registry vem fora de ordem). Usar para: conferir a versão do provider.
+- [Docs do provider aws na tag v6.73.0 (Markdown no GitHub)](https://github.com/hashicorp/terraform-provider-aws/tree/v6.73.0/website/docs/r)
+  O mesmo texto do registry, legível sem JavaScript (o registry não abre para ferramentas). Usar para: conferir argumentos e notas exatas da versão fixada.
+- [Session Manager: start a session (port forwarding)](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-sessions-start.html)
+  Comando `AWS-StartPortForwardingSession`, com exemplo de Windows. Usar para: aula 0013 e o Grafana na etapa 13.
+- [Session Manager prerequisites](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-prerequisites.html) e [SSM: VPC endpoints](https://docs.aws.amazon.com/systems-manager/latest/userguide/setup-create-vpc.html)
+  O agente só precisa de saída 443 para `ssm`, `ssmmessages` e `ec2messages`; sem internet, três endpoints. Usar para: a regra de saída da aula 0013.
+- [EC2: user data](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/user-data.html)
+  Roda só no primeiro boot, como root, log em `/var/log/cloud-init-output.log`. Usar para: o `user_data.sh`.
+- [Security groups (VPC)](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html)
+  Lista do que o security group não filtra (DNS da AWS, metadados, Time Sync). Usar para: entender por que só a 443 basta.
+- [Docker: install Compose manually](https://docs.docker.com/compose/install/linux/)
+  Caminho `cli-plugins` e download do binário. Usar para: o `user_data.sh` (o AL2023 não tem o plugin no repositório).
+- Preços públicos da AWS em JSON: [EC2 Ohio](https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ec2-ondemand-without-sec-sel/US%20East%20(Ohio)/Linux/index.json) e [EBS](https://b0.p.awsstatic.com/pricing/2.0/meteredUnitMaps/ec2/USD/current/ebs.json)
+  O arquivo que a página de preços carrega por script (baixar com `curl --compressed`). Usar para: conferir preço por região sem a Calculator.
 
 ## Sabedoria (comunidades)
 
@@ -162,7 +176,9 @@
 - ~~Se o AWS Budgets conta o gasto **antes** ou **depois** dos créditos do plano gratuito.~~ Observado em 18/11/2026: o modelo "custo mensal" exclui `Credit` e `Refund`, então conta **antes** dos créditos (registro 0013).
 - Se o Terraform consegue fazer `import` do Budget numa conta "AWS (new)" (as SCPs parecem liberar `budgets`, mas não testei). Conferir na aula 0014.
 - Se a SCP do plano gratuito libera `iam:CreateUser` e `iam:CreateAccessKey` na prática: a lista de negação não os cita, mas não testei. Só importa se ele escolher a opção (a) do deploy.
-- Se o plano gratuito **recusa** lançar um tipo não elegível (como o `t3.medium`) ou só cobra dos créditos. A página diz "You can't exceed your Free Tier limits", sem detalhar. Conferir na aula 0013.
+- Se o plano gratuito **recusa** lançar um tipo não elegível (como o `t3.medium`) ou só cobra dos créditos. A página diz "You can't exceed your Free Tier limits", sem detalhar; o FAQ só diz que o plano não dá acesso ao que "would immediately consume the entire Free Tier credit amount". A aula 0013 usa só elegíveis.
 - Documentação oficial da HashiCorp sobre a versão mínima do Terraform e do provider que leem o `aws login`: só achei fonte de terceiros.
-- Os preços exatos de gp3 e S3 Standard em `us-east-1`: as páginas oficiais carregam a tabela por script. Conferir na Calculator.
+- ~~Os preços exatos de gp3 em `us-east-1`.~~ Resolvido em 22/11/2026 pelo JSON público de preços: gp3 em Ohio custa US$ 0,08 por GB-mês.
+- Se o `ami = "resolve:ssm:..."` faz o `plan` propor recriar a instância quando sai um AL2023 novo: a doc não diz. A aula 0013 manda ele olhar o que o `plan` mostra no `ami`.
+- Preço por hora de um *interface VPC endpoint* em Ohio: a página do PrivateLink só mostra US$ 0,01 num exemplo, sem região.
 - [GitHub Status](https://www.githubstatus.com): primeiro lugar a olhar quando os checks ficam presos em *Queued* sem log (foi um incidente do Actions no PR #6).

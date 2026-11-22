@@ -10,9 +10,9 @@
 <main>
 
 <header class="lesson">
-  <p class="kicker">Referência · aulas <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a> e <a href="../lessons/0012-o-state-no-s3.html">0012</a> · cresce até a 0014</p>
+  <p class="kicker">Referência · aulas <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a>, <a href="../lessons/0012-o-state-no-s3.html">0012</a> e <a href="../lessons/0013-uma-maquina-sem-porta.html">0013</a> · cresce até a 0014</p>
   <h1>Terraform e AWS</h1>
-  <p class="subtitle">Versões, comandos, custos e armadilhas da etapa 10. Conferido em 13/11/2026; conta, região e state atualizados em 18/11/2026.</p>
+  <p class="subtitle">Versões, comandos, custos e armadilhas da etapa 10. Conferido em 13/11/2026; conta, região e state atualizados em 18/11/2026; custos de Ohio e EC2 em 22/11/2026.</p>
 </header>
 
 <h2>Versões</h2>
@@ -88,19 +88,41 @@ aws s3api list-object-versions --bucket &lt;nome&gt; --prefix &lt;key&gt;</code>
   <li>Fora do git: <code>.terraform/</code>, <code>*.tfstate</code>, <code>*.tfstate.*</code>, <code>*.tfvars</code>, <code>crash.log</code> e planos salvos.</li>
 </ul>
 
-<h2>Custos em us-east-1</h2>
-<p>A conta roda em <code>us-east-2</code>. Ohio costuma ter o mesmo preço de N. Virginia nesses itens, mas confira na <a href="https://calculator.aws/">Calculator</a> antes da aula 0013.</p>
+<h2>Custos em us-east-2 (Ohio)</h2>
+<p>Conferidos em 22/11/2026 no arquivo público da página de preços da AWS (publicado em 21/11/2026).</p>
 <div class="table-wrap">
 <table>
-  <tr><th>Recurso</th><th>US$/hora</th><th>US$/mês (730 h)</th><th>Parado (<code>stop</code>)</th></tr>
-  <tr><td>EC2 <code>t3.medium</code></td><td>0,0416</td><td>30,37</td><td>0</td></tr>
-  <tr><td>IPv4 público</td><td>0,005</td><td>3,65</td><td>0 (devolvido no <code>stop</code>)</td></tr>
-  <tr><td>EBS gp3 20 GB</td><td>—</td><td>~1,60</td><td>continua cobrando</td></tr>
-  <tr><td>S3 do <em>state</em></td><td>—</td><td>centavos</td><td>—</td></tr>
-  <tr><td>Budgets (alertas), Session Manager no EC2, Parameter Store padrão</td><td>—</td><td>0</td><td>—</td></tr>
+  <tr><th>Recurso</th><th>RAM</th><th>US$/hora</th><th>US$/mês (730 h)</th><th>Parado (<code>stop</code>)</th></tr>
+  <tr><td>EC2 <code>t3.small</code></td><td>2 GiB</td><td>0,0208</td><td>15,18</td><td>0</td></tr>
+  <tr><td>EC2 <code>c7i-flex.large</code></td><td>4 GiB</td><td>0,0848</td><td>61,90</td><td>0</td></tr>
+  <tr><td>EC2 <code>m7i-flex.large</code></td><td>8 GiB</td><td>0,0958</td><td>69,90</td><td>0</td></tr>
+  <tr><td>EC2 <code>t3.medium</code> (não elegível)</td><td>4 GiB</td><td>0,0416</td><td>30,37</td><td>0</td></tr>
+  <tr><td>IPv4 público</td><td>—</td><td>0,005</td><td>3,65</td><td>0 (devolvido no <code>stop</code>)</td></tr>
+  <tr><td>EBS gp3 30 GiB</td><td>—</td><td>—</td><td>2,40 (US$ 0,08/GB-mês)</td><td>continua cobrando</td></tr>
+  <tr><td>S3 do <em>state</em></td><td>—</td><td>—</td><td>centavos</td><td>—</td></tr>
+  <tr><td>Role, instance profile, security group, Budgets, Session Manager, Parameter Store padrão</td><td>—</td><td>—</td><td>0</td><td>—</td></tr>
 </table>
 </div>
-<p>Estudo de 8 h/dia por 30 dias ≈ US$ 12,80. Budget <code>edurag-mensal</code>: US$ 15.</p>
+<p>3 h por dia durante 30 dias numa <code>m7i-flex.large</code> ≈ US$ 8,62 + IPv4 US$ 0,45. Ligada o mês todo, passa de US$ 70 e dispara o Budget <code>edurag-mensal</code> (US$ 15), que mede antes do crédito. <strong><code>destroy</code> no fim da sessão.</strong></p>
+
+<h2>EC2 sem porta de entrada (aula 0013)</h2>
+<div class="table-wrap">
+<table>
+  <tr><th>Bloco</th><th>O essencial</th></tr>
+  <tr><td><code>data "aws_vpc"</code></td><td><code>default = true</code></td></tr>
+  <tr><td><code>aws_security_group</code></td><td>Sem <code>ingress</code>. O Terraform <strong>apaga</strong> a saída padrão</td></tr>
+  <tr><td><code>aws_vpc_security_group_egress_rule</code></td><td>Uma regra: TCP 443 para <code>0.0.0.0/0</code> (SSM, dnf, GHCR, GitHub). Não misture com blocos <code>egress</code> inline</td></tr>
+  <tr><td><code>aws_iam_role</code> + <code>aws_iam_policy_document</code></td><td>Confiança: <code>ec2.amazonaws.com</code> faz <code>sts:AssumeRole</code></td></tr>
+  <tr><td><code>aws_iam_role_policy_attachment</code></td><td><code>arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore</code></td></tr>
+  <tr><td><code>aws_iam_instance_profile</code></td><td><code>role</code> = nome da role; o EC2 recebe o <strong>nome</strong> do profile</td></tr>
+  <tr><td><code>aws_instance</code></td><td><code>ami = "resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"</code>, <code>user_data</code> + <code>user_data_replace_on_change = true</code>, <code>root_block_device</code> gp3 30 GiB <code>encrypted = true</code>, <code>metadata_options { http_tokens = "required" }</code>; em T3, <code>credit_specification { cpu_credits = "standard" }</code></td></tr>
+</table>
+</div>
+<pre><code>aws ssm describe-instance-information --query "InstanceInformationList[].[InstanceId, PingStatus]" --output table
+aws ssm start-session --target &lt;id&gt;
+aws ssm start-session --target &lt;id&gt; --document-name AWS-StartPortForwardingSession --parameters portNumber="8080",localPortNumber="8080"
+docker run --rm instrumentisto/nmap -Pn --top-ports 1000 &lt;ip público&gt;</code></pre>
+<p><code>user_data</code>: roda uma vez, no primeiro boot, como root, e o log fica em <code>/var/log/cloud-init-output.log</code>. Docker pelo <code>dnf install -y docker</code>. O plugin do compose não está nos repositórios do AL2023: binário de versão fixa em <code>/usr/local/lib/docker/cli-plugins/docker-compose</code>, com o SHA256 conferido.</p>
 
 <h2>Desligar quando não estiver estudando</h2>
 <pre><code>aws ec2 stop-instances --instance-ids &lt;id&gt; --profile edurag    # pausa: só o disco cobra
@@ -118,11 +140,15 @@ terraform destroy                                              # some tudo o que
   <li><strong><code>credential_process</code> no perfil <code>default</code></strong> impede o <code>aws login</code> nesse perfil. Use um perfil com nome (<code>edurag</code>).</li>
   <li><strong>Terraform lendo o <code>aws login</code>:</strong> provider ≥ 6.23.0 e Terraform ≥ 1.15.0 (fonte não oficial). Erro típico: "No valid credential sources found".</li>
   <li><strong>Elastic IP</strong> cobra mesmo com a instância parada. O EduRAG não usa.</li>
-  <li><strong><code>.tfstate</code>, <code>.terraform/</code> e <code>*.tfvars</code> fora do git:</strong> o <code>.gitignore</code> ainda não tem essas linhas (aula 0012).</li>
+  <li><strong>Security group sem saída:</strong> o Terraform remove a regra "allow all" padrão. Sem uma regra de saída 443, o agente do SSM não fica <code>Online</code> e o <code>user_data</code> não baixa nada.</li>
+  <li><strong><code>t4g</code> é ARM:</strong> as imagens do GHCR do EduRAG são só amd64.</li>
+  <li><strong>T3 nasce <em>unlimited</em>:</strong> CPU acima da linha de base cobra à parte. Use <code>cpu_credits = "standard"</code>.</li>
+  <li><strong><code>.sh</code> com CRLF:</strong> com <code>core.autocrlf = true</code>, o script chega ao Linux como <code>/bin/bash\r</code>. <code>.gitattributes</code>: <code>*.sh text eol=lf</code>.</li>
+  <li><strong>Mudar o <code>user_data</code></strong> sem <code>user_data_replace_on_change</code> só faz stop/start, e o script não roda de novo.</li>
   <li><strong>Trava do <em>state</em>:</strong> um <code>apply</code> esperando o <code>yes</code> já segura a trava. Se um comando morrer e a trava ficar, <code>terraform force-unlock &lt;id&gt;</code>, só com certeza de que ninguém mais está rodando.</li>
 </ul>
 
-<p class="source">Fontes: <a href="https://developer.hashicorp.com/terraform/language/state">Terraform: State</a> · <a href="https://developer.hashicorp.com/terraform/language/backend/s3">Backend S3</a> · <a href="https://developer.hashicorp.com/terraform/language/manage-sensitive-data">Sensitive data</a> · <a href="https://docs.aws.amazon.com/signin/latest/userguide/command-line-sign-in.html">aws login</a> · <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/how-ec2-instance-stop-start-works.html">EC2 stop/start</a> · <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-free-tier-usage.html">EC2 Free Tier</a> · <a href="https://docs.aws.amazon.com/singlesignon/latest/userguide/enable-identity-center.html">Identity Center</a> · <a href="https://aws.amazon.com/vpc/pricing/">VPC pricing</a> · <a href="https://developer.hashicorp.com/terraform/language/files/dependency-lock">Dependency lock file</a> · <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/create-bucket-overview.html">S3: creating a bucket</a></p>
+<p class="source">Fontes: <a href="https://developer.hashicorp.com/terraform/language/state">Terraform: State</a> · <a href="https://developer.hashicorp.com/terraform/language/backend/s3">Backend S3</a> · <a href="https://developer.hashicorp.com/terraform/language/manage-sensitive-data">Sensitive data</a> · <a href="https://docs.aws.amazon.com/signin/latest/userguide/command-line-sign-in.html">aws login</a> · <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/how-ec2-instance-stop-start-works.html">EC2 stop/start</a> · <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-free-tier-usage.html">EC2 Free Tier</a> · <a href="https://docs.aws.amazon.com/singlesignon/latest/userguide/enable-identity-center.html">Identity Center</a> · <a href="https://aws.amazon.com/vpc/pricing/">VPC pricing</a> · <a href="https://developer.hashicorp.com/terraform/language/files/dependency-lock">Dependency lock file</a> · <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/create-bucket-overview.html">S3: creating a bucket</a> · <a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/instance">aws_instance</a> · <a href="https://registry.terraform.io/providers/hashicorp/aws/6.73.0/docs/resources/security_group">aws_security_group</a> · <a href="https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-sessions-start.html">SSM: port forwarding</a> · <a href="https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/user-data.html">EC2 user data</a> · <a href="https://docs.aws.amazon.com/vpc/latest/userguide/vpc-security-groups.html">Security groups</a></p>
 
 <p><a href="glossario.html">Glossário</a> · <a href="publicacao-ghcr.html">Publicação no GHCR</a> · <a href="exposicao-segura.html">Exposição segura</a></p>
 

@@ -182,8 +182,8 @@ Antes, a base seria feita à mão. Agora ela é **código**: tudo que for criado
 | Aula | Conteúdo | Prova |
 | --- | --- | --- |
 | [0011](estudo/lessons/0011-a-conta-antes-do-codigo.html) ✅ | Plano da conta, MFA, Budget `edurag-mensal`, `aws login`, CLI, Terraform e plugin do Session Manager. Feita em 18/11 numa conta "AWS (new)": Builder ID no lugar do root e do usuário IAM ([0013](estudo/learning-records/0013-conta-aws-new-e-ferramentas.md)) | `sts get-caller-identity` mostra `assumed-role/AccountFullAccessRole`, não o root; as três ferramentas respondem |
-| [0012](estudo/lessons/0012-o-state-no-s3.html) | Bucket do *state* à mão, backend S3 com `use_lockfile`, lock file do provider, `.gitignore` do Terraform, primeiro ciclo `init` → `plan` → `apply` → `destroy` com um parâmetro `String` do SSM | A trava barra um segundo `plan`; o `destroy` deixa a conta como estava |
-| 0013 | EC2, security group sem entrada, role e *instance profile* do SSM, `user_data`, túnel até a interface, RAM medida | Interface pelo túnel; `nmap` de fora sem porta |
+| [0012](estudo/lessons/0012-o-state-no-s3.html) ✅ | Bucket do *state* à mão, backend S3 com `use_lockfile`, lock file do provider, `.gitignore` do Terraform, primeiro ciclo `init` → `plan` → `apply` → `destroy` com um parâmetro `String` do SSM | A trava barra um segundo `plan`; o `destroy` deixa a conta como estava. Feita em 22/11 (PR #62) |
+| [0013](estudo/lessons/0013-uma-maquina-sem-porta.html) | RAM medida localmente e escolha do tipo, EC2 com `user_data` (Docker + compose com hash), security group sem entrada e só saída 443, role e *instance profile* do SSM, túnel até um nginx de teste | Máquina `Online` no SSM; nginx de teste pelo túnel; `nmap` de fora sem porta aberta |
 | 0014 | Parameter Store, `import` do Budget, portão de IaC na CI e a **decisão de como o deploy entra no EC2** (o OIDC está bloqueado na conta) | PR abrindo a porta 22 barrado |
 
 Referência: [Terraform e AWS](estudo/reference/terraform-aws.html).
@@ -191,7 +191,7 @@ Referência: [Terraform e AWS](estudo/reference/terraform-aws.html).
 *Bootstrap (à mão, uma vez, documentado):*
 - [x] **Alerta de orçamento (18/11/2026):** Budget `edurag-mensal`, US$ 15/mês, alertas em 85% e 100% do real e 100% do previsto, créditos excluídos do cálculo. Depois ele entra no Terraform com um bloco `import`: é a primeira aula de `terraform import`.
 - [x] **Identidade (18/11/2026):** a conta é da experiência "AWS (new)", com *projects*: não há root nem usuário IAM com senha (SCP). O login é pelo **AWS Builder ID com MFA**, e a credencial local pelo **`aws login`** (role `AccountFullAccessRole`, temporária, até 12 h), nunca access key. AWS CLI 2.41.0, Terraform 1.17.2 (hash conferido) e plugin do Session Manager instalados. Plano gratuito, US$ 100 de crédito até 15/05/2027.
-- [ ] Bucket S3 do *state* (versionado, criptografado, bloqueio de acesso público), com trava nativa do S3 (`use_lockfile = true`, sem DynamoDB). Aula 0012.
+- [x] Bucket S3 do *state* (versionado, criptografado, bloqueio de acesso público), com trava nativa do S3 (`use_lockfile = true`, sem DynamoDB). Aula 0012, feita em 22/11/2026 (PR #62).
 
 *Terraform (pasta `infra/`, PR `infra/base`):*
 - [ ] EC2 Amazon Linux 2023 (já vem com o agente do SSM) na VPC padrão, com *instance profile* `AmazonSSMManagedInstanceCore`. Tamanho de partida: `t3.medium` (Postgres, API, nginx, Ollama de embeddings, Prometheus e Grafana na mesma máquina); medir a RAM e ajustar. **No plano gratuito, o `t3.medium` não é elegível** (elegíveis: `t3.micro`, `t3.small`, `t4g.micro`, `t4g.small`, `c7i-flex.large`, `m7i-flex.large`); a escolha fica para a aula 0013. Disco gp3 e `user_data` instalando Docker e o plugin do compose.
@@ -209,6 +209,7 @@ Referência: [Terraform e AWS](estudo/reference/terraform-aws.html).
 - [ ] `docker-compose.prod.yml`: imagens do GHCR pela tag do SHA (sem `build`), API sem porta publicada (só o `web` fala com ela pela rede interna), segredos lidos do Parameter Store no deploy, nunca de um `.env` versionado.
 - [ ] Job `deploy` no `build.yml`, só na `main` e com `needs` na publicação: autentica ~~via OIDC~~ (bloqueado na conta; o jeito depende da decisão da etapa 10) e manda pelo SSM `docker compose pull` + `up -d` com a tag do commit. Se a decisão for o deploy por *pull*, este job some e a instância faz o `pull` e o smoke test sozinha.
 - [ ] Smoke test chamando `/ready`; se falhar, voltar para a tag anterior.
+- [ ] Interface **do EduRAG** pelo túnel do SSM e RAM medida **no EC2** com a stack de pé (vieram da aula 0013, que provou o túnel com um nginx de teste e mediu a RAM localmente).
 
 *Teste de bloqueio:* PR que quebra o `/ready` de propósito → o deploy volta sozinho para a tag anterior.
 *Pronto quando:* um merge na `main` aparece no ar sozinho, e um deploy quebrado volta sozinho.
