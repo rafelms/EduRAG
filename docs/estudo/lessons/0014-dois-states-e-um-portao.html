@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dois states e um portão</title>
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<main>
+
+<header class="lesson">
+  <p class="kicker">Aula 0014 · Etapa 10 do <a href="../../pipeline-plano.md">pipeline-plano</a> · ~2 sessões de 50 min</p>
+  <h1>Dois states e um portão</h1>
+  <p class="subtitle">Trazer para o código um recurso que nasceu no console, sem deixar o <code>destroy</code> apagá-lo. Depois, barrar na CI o Terraform que abre porta.</p>
+</header>
+
+<div class="note">
+  <p><strong>Testado em 22/11/2026, antes da aula</strong>, sem mudar nada na sua conta: <code>plan</code> com <code>import</code> do Budget numa cópia com <em>state</em> local; <code>trivy config</code> 0.76.1 no seu <code>infra/</code> e em cópias com a porta 22 aberta e com a exceção vencida; <code>init -backend=false</code>, <code>validate</code> e <code>fmt -check</code> no Linux, como na CI. Docs do provider lidos na tag <code>v6.73.0</code>; os do Trivy, na tag <code>v0.76.1</code>.</p>
+  <p><strong>O que muda no mapa:</strong> o Parameter Store e a decisão do deploy (o OIDC está bloqueado) vão para a aula 0015. As duas coisas conversam direto com a etapa 11.</p>
+</div>
+
+<h2>Antes de começar: quem escreve?</h2>
+<p>A regra da missão é "você escreve o Terraform; a IA explica e revisa". Na <a href="0013-uma-maquina-sem-porta.html">aula 0013</a>, a partir do <code>rede.tf</code>, você pediu que a IA preenchesse (<a href="../learning-records/0014-ec2-sem-porta-provado.md">registro 0014</a>). <strong>Diga no chat qual vale para esta aula.</strong> A aula está escrita para você escrever, e cada bloco tem o link da doc.</p>
+
+<h2>Aquecimento: de memória</h2>
+<p>As duas que ficaram em branco na 0013, e uma nova: (1) onde fica o <code>.tflock</code> do EduRAG, e quando ele some? (2) Um <code>SecureString</code> criado por um recurso do Terraform fica em texto puro onde? (3) Por que o <code>ami = "resolve:ssm:..."</code> passou no <code>plan</code> e quebrou no <code>apply</code>? Confira nas aulas <a href="0012-o-state-no-s3.html">0012</a> e <a href="0013-uma-maquina-sem-porta.html">0013</a>.</p>
+
+<h2>Parte A: o Budget entra no código</h2>
+
+<h3>O problema: o <code>destroy</code> de cada sessão</h3>
+<p>O Budget <code>edurag-mensal</code> foi criado no console na <a href="0011-a-conta-antes-do-codigo.html">aula 0011</a>. O plano manda trazê-lo para o Terraform com <code>import</code>. Só que a rotina da 0013 é <code>terraform destroy</code> no fim de cada sessão, e <strong>o <code>destroy</code> apaga tudo o que está no <em>state</em></strong>.</p>
+
+<p><strong>Aposte:</strong> se o Budget entrar em <code>infra/</code>, junto com o EC2, o que acontece no fim da próxima sessão?</p>
+<details>
+  <summary>Resposta</summary>
+  <p>O <code>destroy</code> apaga o Budget junto com a máquina, e o alarme de gastos some justamente quando há recurso pago para vigiar. A regra é: <strong>quem vive por mais tempo fica em outro <em>state</em></strong>. O Budget vai para uma segunda pasta, <code>infra/conta/</code>, que é outro <em>root module</em>: tem o próprio <code>init</code> e o próprio <em>state</em>, no mesmo bucket e com outra <code>key</code>. O <code>destroy</code> em <code>infra/</code> não enxerga o que está em <code>infra/conta/</code>.</p>
+</details>
+
+<div class="flow">
+  <span>infra/ → prod/terraform.tfstate</span><i>·</i><span>EC2, rede, IAM</span><i>·</i><span class="gate">destroy a cada sessão</span>
+</div>
+<div class="flow">
+  <span>infra/conta/ → conta/terraform.tfstate</span><i>·</i><span>Budget</span><i>·</i><span class="gate">prevent_destroy</span>
+</div>
+
+<h3>O <code>import</code> em três tempos</h3>
+<div class="table-wrap">
+<table>
+  <tr><th>Tempo</th><th>O que você faz</th><th>O que o Terraform faz</th></tr>
+  <tr><td>1. Declarar</td><td>Um bloco <code>import</code> com <code>to</code> (o endereço no código) e <code>id</code> (o ID na AWS)</td><td>Nada ainda</td></tr>
+  <tr><td>2. Gerar</td><td><code>terraform plan -generate-config-out=generated.tf</code></td><td>Lê o Budget na AWS e <strong>escreve o HCL</strong> num arquivo novo</td></tr>
+  <tr><td>3. Limpar e aplicar</td><td>Você limpa o HCL gerado, confere o <code>plan</code> e roda o <code>apply</code></td><td>Grava o Budget no <em>state</em>. Não cria nem apaga nada na AWS</td></tr>
+</table>
+</div>
+<p class="source"><a href="https://developer.hashicorp.com/terraform/language/import">Terraform: Import</a> · <a href="https://developer.hashicorp.com/terraform/language/import/generating-configuration">Generating configuration</a> (o próprio Terraform avisa: "Config generation is experimental") · ID do Budget: <code>AccountID:BudgetName</code>, na seção Import de <a href="https://github.com/hashicorp/terraform-provider-aws/blob/v6.73.0/website/docs/r/budgets_budget.html.markdown">aws_budgets_budget (v6.73.0)</a></p>
+
+<h3>O HCL gerado não vai para o git como veio</h3>
+<p>No teste, o arquivo gerado trouxe <strong>o seu e-mail</strong> e <strong>o ID da conta</strong>, e o repositório é público. Também trouxe campos que só repetem o padrão. O que fazer com cada um (cada linha foi conferida: sem ela, o <code>plan</code> continua sem diferença):</p>
+<div class="table-wrap">
+<table>
+  <tr><th>Campo gerado</th><th>Destino</th><th>Por quê</th></tr>
+  <tr><td><code>account_id</code></td><td>Sai</td><td>É o ID da conta. O provider usa a conta da credencial</td></tr>
+  <tr><td><code>subscriber_email_addresses</code></td><td>Vira <code>var.email_alerta</code></td><td>O valor fica num <code>terraform.tfvars</code>, que o seu <code>.gitignore</code> já ignora (<code>*.tfvars</code>)</td></tr>
+  <tr><td><code>tags_all</code>, <code>tags = {}</code></td><td>Saem</td><td><code>tags_all</code> é calculado: é o <code>default_tags</code> somado às tags</td></tr>
+  <tr><td><code>billing_view_arn = null</code>, <code>match_options = []</code>, <code>subscriber_sns_topic_arns = []</code></td><td>Saem</td><td>Nulo ou vazio é o padrão</td></tr>
+  <tr><td><code>time_period_end = "2087-06-15_00:00"</code></td><td>Sai</td><td>É o "sem fim" que a AWS põe sozinha</td></tr>
+  <tr><td><code>filter_expression</code> com <code>Credit</code> e <code>Refund</code></td><td><strong>Fica</strong></td><td>É o que faz o Budget medir antes do crédito (<a href="../learning-records/0013-conta-aws-new-e-ferramentas.md">registro 0013</a>)</td></tr>
+  <tr><td>Os três <code>notification</code></td><td><strong>Ficam</strong></td><td>85% e 100% do real, 100% do previsto</td></tr>
+  <tr><td>(novo) <code>lifecycle { prevent_destroy = true }</code></td><td>Entra</td><td>Um <code>destroy</code> que alcance o Budget falha com erro, em vez de apagar</td></tr>
+</table>
+</div>
+<p class="source"><a href="https://developer.hashicorp.com/terraform/language/values/variables">Variables</a> (arquivo <code>terraform.tfvars</code> carregado sozinho) · <a href="https://developer.hashicorp.com/terraform/language/meta-arguments/lifecycle">lifecycle</a> (<code>prevent_destroy</code>)</p>
+
+<p><strong>Por que a variável não leva <code>sensitive = true</code>?</strong> O e-mail não é segredo, só não deve ficar no repositório público. No teste, marcar como <code>sensitive</code> fez o <code>plan</code> mostrar três <code>~ notification</code> com o conteúdo escondido, e um plano que você não consegue ler não serve para revisar.</p>
+
+<p><strong>O <code>plan</code> certo depois da limpeza:</strong> <code>1 to import, 0 to add, 1 to change, 0 to destroy</code>, e a única mudança é <code>tags_all</code> ganhando <code>Projeto</code> e <code>Gerenciado</code> (o <code>default_tags</code>). Se aparecer <code>notification</code> com <code>-</code> e <code>+</code>, o e-mail do <code>tfvars</code> <strong>não é o mesmo</strong> do Budget: no teste, isso aconteceu com o e-mail do <code>git config</code>, que é outro.</p>
+
+<details>
+  <summary>E na etapa 15, quando a trilha acabar?</summary>
+  <p>O Budget fica (a missão manda manter). Para o Terraform largar o Budget sem apagá-lo, troque o recurso por um bloco <code>removed</code> com <code>lifecycle { destroy = false }</code>. O <code>plan</code> mostra "will no longer be managed by Terraform, but will not be destroyed". Testado com um recurso local. <span class="source">(<a href="https://developer.hashicorp.com/terraform/language/block/removed">removed block</a>)</span></p>
+</details>
+
+<h2>Parte B: o portão de IaC</h2>
+
+<p>O mesmo desenho dos portões do Bloco B: a ferramenta roda num job, o job vira check obrigatório e um PR proposital prova o bloqueio. A diferença: o portão de IaC <strong>não precisa de credencial da AWS</strong>. Ele lê arquivos.</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Passo do job</th><th>O que pega</th><th>Fonte</th></tr>
+  <tr><td><code>terraform fmt -check -recursive infra</code></td><td>Arquivo fora do formato. Sai com código diferente de 0</td><td><a href="https://developer.hashicorp.com/terraform/cli/commands/fmt">fmt</a></td></tr>
+  <tr><td><code>terraform -chdir=&lt;pasta&gt; init -backend=false</code> e <code>validate</code>, <strong>uma vez por root module</strong> (<code>infra</code> e <code>infra/conta</code>)</td><td>Sintaxe, tipos, referência quebrada, arquivo do <code>file()</code> que não existe. Sem <code>-backend=false</code>, o <code>init</code> pediria credencial do S3</td><td><a href="https://developer.hashicorp.com/terraform/cli/commands/validate">validate</a></td></tr>
+  <tr><td><code>trivy config</code> em <code>infra/</code>, HIGH e CRITICAL, código de saída 1</td><td>Configuração insegura: porta aberta, disco sem cifra, IMDSv1</td><td><a href="https://github.com/aquasecurity/trivy/blob/v0.76.1/docs/guide/scanner/misconfiguration/config/config.md">Trivy: misconfiguration</a></td></tr>
+</table>
+</div>
+
+<p><strong>Para instalar o Terraform no runner:</strong> <code>hashicorp/setup-terraform</code> v4.0.1 (12/05/2026, fora do seu cooldown), com <code>terraform_version: 1.17.2</code>. Fixe por SHA, como as outras actions. A tag é leve: o <code>git ls-remote</code> já devolve o commit. Confira que o resultado começa com <code>dfe3c3f8</code>. Ponha <code>terraform_wrapper: false</code>: o wrapper só serve para expor a saída a outros passos, e aqui você não precisa disso. <span class="source">(<a href="https://github.com/hashicorp/setup-terraform">setup-terraform</a>)</span></p>
+
+<p><strong>O lock file já serve para o Linux.</strong> No teste, o <code>init -backend=false</code> num contêiner Linux usou o seu <code>.terraform.lock.hcl</code> sem mudar nada: ele já traz os hashes <code>zh:</code> de todas as plataformas. O <code>infra/conta/</code> terá o próprio lock, e ele também vai para o git.</p>
+
+<h3>Armadilha: o seu código já cai no portão</h3>
+
+<p><strong>Aposte:</strong> o <code>trivy config</code>, com HIGH e CRITICAL, passa no <code>infra/</code> que está na <code>main</code> hoje?</p>
+<details>
+  <summary>Resposta</summary>
+  <p>Não. No teste, ele achou <strong><code>AWS-0104</code> (CRITICAL)</strong> em <code>rede.tf:17</code>: "Security group rule allows unrestricted egress to any IP address". É a saída 443 para <code>0.0.0.0/0</code>, a que o agente do SSM precisa. O IMDSv2 e o disco cifrado passaram.</p>
+</details>
+
+<p>Este é o primeiro achado de portão em que o "corrigir" não é óbvio. As saídas possíveis:</p>
+<div class="table-wrap">
+<table>
+  <tr><th>Saída</th><th>Custo</th><th>Serve?</th></tr>
+  <tr><td>Restringir o <code>cidr_ipv4</code></td><td>Zero</td><td>Não: o SSM, o <code>dnf</code> e o GHCR não têm uma faixa fixa e pequena de IPs</td></tr>
+  <tr><td>VPC endpoints do SSM, sem internet</td><td>~US$ 0,03/h (aula 0013)</td><td>Não sozinho: o Docker continua precisando do GHCR, que está na internet</td></tr>
+  <tr><td>Exceção no código, com justificativa e <strong>validade</strong></td><td>Zero</td><td>Sim: o risco fica escrito, visível no PR, e volta a barrar quando a data passa</td></tr>
+  <tr><td>Desligar a regra no job (<code>.trivyignore</code> global, <code>severity</code> menor)</td><td>Zero</td><td>Não: vale para todo recurso, inclusive para uma saída aberta que ninguém justificou</td></tr>
+</table>
+</div>
+
+<p><strong>A exceção do Trivy:</strong> um comentário na linha <strong>acima</strong> do recurso, no formato <code>#trivy:ignore:&lt;ID&gt;:exp:&lt;aaaa-mm-dd&gt;</code>. Acima dele, uma linha de comentário comum com o porquê. A data é sua: até quando essa saída aberta é aceitável? (O fim da trilha é um bom limite.) <span class="source">(<a href="https://github.com/aquasecurity/trivy/blob/v0.76.1/docs/guide/scanner/misconfiguration/config/config.md">Trivy: Filtering resources by inline comments, Expiration Date</a>)</span></p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Teste (Trivy 0.76.1, <code>--severity HIGH,CRITICAL --exit-code 1</code>)</th><th>Saída</th></tr>
+  <tr><td><code>infra/</code> como está na <code>main</code></td><td><strong>1</strong>: <code>AWS-0104</code></td></tr>
+  <tr><td>Com a exceção, validade em 2027</td><td><strong>0</strong></td></tr>
+  <tr><td>Com a exceção vencida (data no passado)</td><td><strong>1</strong>: o achado volta</td></tr>
+  <tr><td>Com uma entrada TCP 22 de <code>0.0.0.0/0</code></td><td><strong>1</strong>: <code>AWS-0107</code>, que é <strong>HIGH</strong>, não CRITICAL</td></tr>
+</table>
+</div>
+<p class="source"><a href="https://avd.aquasec.com/misconfig/aws-0104">AWS-0104</a> · <a href="https://avd.aquasec.com/misconfig/aws-0107">AWS-0107</a></p>
+
+<h2>Mão na massa</h2>
+
+<p>Três PRs: <code>infra/conta</code>, <code>ci/iac</code> e a prova. A Parte A precisa de <code>aws login</code>; a Parte B não. Se travar, peça o esqueleto sem valores.</p>
+
+<ol class="checklist" data-key="0014-iac">
+  <li><strong>Sessão e branch:</strong> <code>aws login --profile edurag</code> (se venceu), <code>$env:AWS_PROFILE = "edurag"</code>, <code>aws sts get-caller-identity</code>. <code>git checkout main</code>, <code>git pull</code>, <code>git checkout -b infra/conta</code>.</li>
+  <li><strong><code>infra/conta/</code>:</strong> o <code>versions.tf</code> e o <code>providers.tf</code> do <code>infra/</code>, com <strong>uma</strong> mudança: <code>key = "conta/terraform.tfstate"</code>. Mesmo bucket, outro <em>state</em>.</li>
+  <li><strong>O bloco <code>import</code></strong> num <code>import.tf</code>: <code>to = aws_budgets_budget.mensal</code>, <code>id = "&lt;conta&gt;:edurag-mensal"</code>. A conta vem de <code>aws sts get-caller-identity --query Account --output text</code>.</li>
+  <li><strong>Gerar:</strong> em <code>infra/conta</code>, <code>terraform init</code> e depois <code>terraform plan -generate-config-out=generated.tf</code>. Anote a linha <code>Plan:</code>.</li>
+  <li><strong>Limpar:</strong> crie o <code>budget.tf</code> a partir do <code>generated.tf</code>, seguindo a tabela da Parte A. Crie o <code>variable "email_alerta"</code> (<code>type = string</code>, sem <code>sensitive</code>) e o <code>terraform.tfvars</code> com o e-mail <strong>do Budget</strong>. Acrescente o <code>prevent_destroy</code>. Apague o <code>generated.tf</code>.</li>
+  <li><strong>Conferir:</strong> <code>terraform fmt</code>, <code>terraform plan</code>. Precisa dar <code>1 to import, 0 to add, 1 to change, 0 to destroy</code>, e a mudança só em <code>tags_all</code>. Qualquer outra linha com <code>~</code>, <code>-</code> ou <code>+</code>: pare e me mostre.</li>
+  <li><strong>Aplicar:</strong> <code>terraform apply</code>. Depois, <code>terraform state list</code> (precisa mostrar <code>aws_budgets_budget.mensal</code>). Apague o <code>import.tf</code>, porque ele tem o ID da conta, e rode <code>terraform plan</code> de novo: precisa dizer <code>No changes</code>.</li>
+  <li><strong>Prova do <code>prevent_destroy</code>:</strong> <code>terraform plan -destroy</code> em <code>infra/conta</code>. Precisa falhar com <code>Instance cannot be destroyed</code>. É só um <code>plan</code>: nada muda.</li>
+  <li><strong>PR <code>infra/conta</code>:</strong> <code>git status</code> deve listar <code>budget.tf</code>, a variável, <code>versions.tf</code>, <code>providers.tf</code> e o <code>.terraform.lock.hcl</code> da pasta. <strong>Nem <code>terraform.tfvars</code>, nem <code>generated.tf</code>, nem <code>import.tf</code>.</strong> Antes do commit, procure o seu e-mail e o ID da conta: <code>git diff --cached | Select-String "@|&lt;conta&gt;"</code>. Commit, PR e merge.</li>
+  <li><strong>A exceção, na branch <code>ci/iac</code>:</strong> rode o Trivy local e veja o <code>AWS-0104</code>: <code>docker run --rm -v "${PWD}\infra:/infra:ro" aquasec/trivy:0.76.1 config --severity HIGH,CRITICAL --exit-code 1 /infra</code> e depois <code>$LASTEXITCODE</code>. Escreva a justificativa e o <code>#trivy:ignore:AWS-0104:exp:...</code> acima do <code>aws_vpc_security_group_egress_rule</code>. Rode de novo: o código de saída precisa ser <code>0</code>.</li>
+  <li><strong>O job <code>iac</code></strong> no <code>security.yml</code>: <code>permissions: contents: read</code>; checkout (o mesmo SHA dos outros jobs); <code>setup-terraform</code> por SHA, com versão 1.17.2 e sem wrapper; <code>fmt -check -recursive</code>; <code>init -backend=false</code> + <code>validate</code> nas duas pastas; <code>trivy-action</code> (o mesmo SHA do <code>trivy-fs</code>) com <code>scan-type: config</code>, <code>scan-ref: infra</code>, <code>severity: HIGH,CRITICAL</code>, <code>exit-code: '1'</code> e <code>version: v0.76.1</code>. Abra o PR e espere o <code>iac</code> verde.</li>
+  <li><strong>Portão de verdade:</strong> depois do merge, ponha o <code>iac</code> nos checks obrigatórios do ruleset <code>protege-main</code>.</li>
+  <li><strong>A prova, branch <code>prova/porta-22</code>:</strong> em <code>rede.tf</code>, uma <code>aws_vpc_security_group_ingress_rule</code> TCP 22 de <code>0.0.0.0/0</code>. Abra o PR. O <code>iac</code> precisa falhar com <code>AWS-0107</code> e o merge ficar bloqueado. Feche sem merge e apague a branch.</li>
+</ol>
+
+<h2>Me conte</h2>
+<ul>
+  <li>Quem escreveu o quê (a resposta do começo).</li>
+  <li>A linha <code>Plan:</code> do passo 4 e a do passo 6, e o que apareceu com <code>~</code>.</li>
+  <li>A saída do <code>plan -destroy</code> do passo 8.</li>
+  <li>A data que você pôs na exceção e o porquê numa frase.</li>
+  <li>O link do PR <code>ci/iac</code> com o <code>iac</code> verde e o da prova com o <code>iac</code> vermelho (a linha do <code>AWS-0107</code>).</li>
+</ul>
+
+<h2>Recupere da memória</h2>
+<p>As perguntas 5 a 7 retomam as aulas 0012 e 0013.</p>
+
+<div class="quiz">
+  <div class="question" data-answer="1">
+    <p class="prompt">1. Por que o Budget fica em infra/conta/, e não em infra/?</p>
+    <div class="options">
+      <button>O Budget não aceita default tags</button>
+      <button>O destroy da sessão o apagaria</button>
+      <button>O import só funciona sem EC2</button>
+    </div>
+    <p class="feedback" data-ok="Isso. O destroy apaga tudo o que está no state; quem vive mais tempo fica noutro state." data-bad="Não. O motivo é o ciclo de vida: o destroy de cada sessão apagaria o Budget junto com o EC2."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">2. Variável sem sensitive, e o plan do import mostra notification com - e +. O que indica?</p>
+    <div class="options">
+      <button>O e-mail difere do cadastrado</button>
+      <button>O Budget será apagado antes</button>
+      <button>As tags padrão foram ignoradas</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Com o mesmo e-mail, a única mudança é o tags_all." data-bad="Não. Import não apaga nada. Notificação trocada é sinal de um valor diferente da AWS: no teste, foi o e-mail."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">3. Se o portão filtrasse só CRITICAL, o PR com a porta 22 aberta...</p>
+    <div class="options">
+      <button>É barrado pela regra AWS-0107</button>
+      <button>Passa: a AWS-0107 é HIGH</button>
+      <button>Falha no terraform validate antes</button>
+    </div>
+    <p class="feedback" data-ok="Isso. A AWS-0107 é HIGH no Trivy 0.76.1; por isso o portão filtra HIGH e CRITICAL." data-bad="Não. A AWS-0107 é HIGH, então um filtro só de CRITICAL a deixaria passar. E o validate não olha segurança."></p>
+  </div>
+
+  <div class="question" data-answer="2">
+    <p class="prompt">4. O que acontece quando a data do #trivy:ignore:AWS-0104:exp:... passa?</p>
+    <div class="options">
+      <button>O comentário some do arquivo</button>
+      <button>O job só passa avisando</button>
+      <button>O achado volta e barra</button>
+    </div>
+    <p class="feedback" data-ok="Certo. No teste, com a data no passado, o código de saída voltou a ser 1." data-bad="Não. O comentário continua lá, mas deixa de valer: o achado volta e o job falha."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">5. Onde fica a trava do state do EduRAG?</p>
+    <div class="options">
+      <button>No bucket, ao lado da key</button>
+      <button>Numa tabela do DynamoDB da conta</button>
+      <button>Na pasta .terraform da sua máquina</button>
+    </div>
+    <p class="feedback" data-ok="Isso. O use_lockfile cria o .tflock ao lado do state, e ele some quando a operação termina." data-bad="Não. Com use_lockfile = true, a trava é um objeto .tflock no bucket, ao lado da key. O DynamoDB é o jeito obsoleto."></p>
+  </div>
+
+  <div class="question" data-answer="1">
+    <p class="prompt">6. Um SecureString criado por um recurso do Terraform fica em texto puro onde?</p>
+    <div class="options">
+      <button>No log do terraform apply</button>
+      <button>No state, no bucket S3</button>
+      <button>No console do Parameter Store</button>
+    </div>
+    <p class="feedback" data-ok="Certo. Por isso o valor de segredo é gravado à mão, com aws ssm put-parameter (aula 0015)." data-bad="Não. O valor vai em texto puro para o state. O encrypt do bucket cifra o disco, mas quem lê o objeto lê o segredo."></p>
+  </div>
+
+  <div class="question" data-answer="0">
+    <p class="prompt">7. Por que o resolve:ssm passou no plan e quebrou no apply?</p>
+    <div class="options">
+      <button>O plan não consulta a AMI</button>
+      <button>A AMI saiu durante o apply</button>
+      <button>A região do provider estava errada</button>
+    </div>
+    <p class="feedback" data-ok="Isso. O provider só chama o DescribeImages no apply, e essa API exige um ami-..." data-bad="Não. O plan mostrou o texto sem conferir; só no apply o provider chamou o DescribeImages, que exige um ID ami-..."></p>
+  </div>
+</div>
+
+<footer class="lesson">
+  <p><strong>Fonte principal:</strong> <a href="https://developer.hashicorp.com/terraform/language/import">Terraform: Import</a> e a seção de exceções do <a href="https://github.com/aquasecurity/trivy/blob/v0.76.1/docs/guide/scanner/misconfiguration/config/config.md">Trivy: misconfiguration</a>. Para a aula 0015, leia antes <a href="https://developer.hashicorp.com/terraform/language/manage-sensitive-data">Terraform: Manage sensitive data</a>.</p>
+  <p><strong>Referência rápida:</strong> <a href="../reference/terraform-aws.html">Terraform e AWS</a> · <a href="../reference/glossario.html">Glossário</a>.</p>
+  <p>O <code>plan</code> do import mostrou mais do que tags, o <code>iac</code> ficou vermelho sem motivo claro ou a exceção não pegou? Pergunte ao Claude no terminal.</p>
+</footer>
+
+</main>
+<script src="../assets/checklist.js"></script>
+<script src="../assets/quiz.js"></script>
+</body>
+</html>

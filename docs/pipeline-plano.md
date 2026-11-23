@@ -177,14 +177,15 @@ Antes, a base seria feita à mão. Agora ela é **código**: tudo que for criado
 
 **Decidido em 13/11/2026:** acesso pelo **túnel do SSM**; região **`us-east-2`** (era `us-east-1`; mudou em 18/11 porque a conta é da experiência "AWS (new)", que fixa a região pelo país, ver registro [0013](estudo/learning-records/0013-conta-aws-new-e-ferramentas.md)); **o Rafael escreve todo o Terraform** (e, nas etapas 12 a 14, o Prometheus e o Grafana). As aulas saem do `/teach`, a partir do prompt em [estudo/prompts/etapa-10-terraform.md](estudo/prompts/etapa-10-terraform.md). Numeração: a próxima aula é a **0011** (o número 0010 ficou com o `ClaudeLLM`, feito sem aula em HTML).
 
-*Mapa das aulas (13/11/2026; eram três, viraram quatro para cada uma caber numa sessão):*
+*Mapa das aulas (13/11/2026; eram três, viraram quatro para cada uma caber numa sessão; em 22/11/2026, a 0014 virou duas):*
 
 | Aula | Conteúdo | Prova |
 | --- | --- | --- |
 | [0011](estudo/lessons/0011-a-conta-antes-do-codigo.html) ✅ | Plano da conta, MFA, Budget `edurag-mensal`, `aws login`, CLI, Terraform e plugin do Session Manager. Feita em 18/11 numa conta "AWS (new)": Builder ID no lugar do root e do usuário IAM ([0013](estudo/learning-records/0013-conta-aws-new-e-ferramentas.md)) | `sts get-caller-identity` mostra `assumed-role/AccountFullAccessRole`, não o root; as três ferramentas respondem |
 | [0012](estudo/lessons/0012-o-state-no-s3.html) ✅ | Bucket do *state* à mão, backend S3 com `use_lockfile`, lock file do provider, `.gitignore` do Terraform, primeiro ciclo `init` → `plan` → `apply` → `destroy` com um parâmetro `String` do SSM | A trava barra um segundo `plan`; o `destroy` deixa a conta como estava. Feita em 22/11 (PR #62) |
-| [0013](estudo/lessons/0013-uma-maquina-sem-porta.html) | RAM medida localmente e escolha do tipo, EC2 com `user_data` (Docker + compose com hash), security group sem entrada e só saída 443, role e *instance profile* do SSM, túnel até um nginx de teste | Máquina `Online` no SSM; nginx de teste pelo túnel; `nmap` de fora sem porta aberta |
-| 0014 | Parameter Store, `import` do Budget, portão de IaC na CI e a **decisão de como o deploy entra no EC2** (o OIDC está bloqueado na conta) | PR abrindo a porta 22 barrado |
+| [0013](estudo/lessons/0013-uma-maquina-sem-porta.html) ✅ | RAM medida localmente e escolha do tipo, EC2 com `user_data` (Docker + compose com hash), security group sem entrada e só saída 443, role e *instance profile* do SSM, túnel até um nginx de teste | Feita em 22/11 (PR #64): `t3.small`, `Online` no SSM, nginx pelo túnel, `nmap` com 1000 `filtered`, `destroy` limpo. O `resolve:ssm:` quebrou no `apply` e virou `data "aws_ssm_parameter"` ([0014](estudo/learning-records/0014-ec2-sem-porta-provado.md)) |
+| [0014](estudo/lessons/0014-dois-states-e-um-portao.html) | `import` do Budget num segundo root module (`infra/conta/`, outro *state*, `prevent_destroy`), para o `destroy` de cada sessão não apagá-lo. Portão de IaC na CI (`fmt`, `validate`, `trivy config`), com a saída 443 (`AWS-0104`) como exceção justificada e com validade | `plan -destroy` do Budget falha; PR abrindo a porta 22 barrado (`AWS-0107`, HIGH) |
+| 0015 | Parameter Store e a **decisão de como o deploy entra no EC2** (o OIDC está bloqueado na conta) | A instância lê um parâmetro com a role, sem segredo no *state* |
 
 Referência: [Terraform e AWS](estudo/reference/terraform-aws.html).
 
@@ -194,6 +195,7 @@ Referência: [Terraform e AWS](estudo/reference/terraform-aws.html).
 - [x] Bucket S3 do *state* (versionado, criptografado, bloqueio de acesso público), com trava nativa do S3 (`use_lockfile = true`, sem DynamoDB). Aula 0012, feita em 22/11/2026 (PR #62).
 
 *Terraform (pasta `infra/`, PR `infra/base`):*
+- [x] **Aula 0013 (22/11/2026, PR #64):** EC2 `t3.small` com AL2023, *instance profile* do SSM, `user_data` com Docker e compose v5.7.1 por hash, gp3 30 GiB cifrado, IMDSv2. Os itens abaixo ficam como registro do desenho.
 - [ ] EC2 Amazon Linux 2023 (já vem com o agente do SSM) na VPC padrão, com *instance profile* `AmazonSSMManagedInstanceCore`. Tamanho de partida: `t3.medium` (Postgres, API, nginx, Ollama de embeddings, Prometheus e Grafana na mesma máquina); medir a RAM e ajustar. **No plano gratuito, o `t3.medium` não é elegível** (elegíveis: `t3.micro`, `t3.small`, `t4g.micro`, `t4g.small`, `c7i-flex.large`, `m7i-flex.large`); a escolha fica para a aula 0013. Disco gp3 e `user_data` instalando Docker e o plugin do compose.
 - [ ] **Security group sem nenhuma regra de entrada.** Acesso só pelo túnel do SSM (`AWS-StartPortForwardingSession`) para a interface (8080) e o Grafana (3000). **Decidido em 13/11/2026: túnel do SSM**, nenhuma porta aberta.
 - [ ] ~~Provedor **OIDC** do GitHub e uma *role* com permissão mínima~~ **Bloqueado (18/11/2026):** a SCP da conta "AWS (new)" nega `iam:*Provider*`. **Decisão dele, até a aula 0014**, de como o deploy da etapa 11 chega ao EC2: (a) usuário IAM só com access key, guardada nos segredos do GitHub, com `ssm:SendCommand` só nessa instância (credencial de longa duração; a SCP parece permitir, não testado); (b) deploy por *pull*: a própria instância busca a tag nova no GHCR, e o GitHub não precisa de credencial da AWS; (c) ativar os recursos avançados da conta (irreversível, exige o plano pago, perde o spend limit) e voltar ao OIDC.

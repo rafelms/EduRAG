@@ -76,6 +76,9 @@
   <dt>IaC (infraestrutura como código)</dt>
   <dd>Descrever servidores, redes e permissões em arquivos versionados, e não em cliques no console. No EduRAG, é o Terraform em <code>infra/</code>: o que nasce pelo <code>apply</code> some pelo <code>destroy</code>. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
 
+  <dt>Import (Terraform)</dt>
+  <dd>Trazer para o <em>state</em> um recurso que já existe na conta, sem recriá-lo. O bloco <code>import</code> diz o endereço no código (<code>to</code>) e o ID na AWS (<code>id</code>). O <code>plan -generate-config-out</code> escreve um rascunho do HCL, que você limpa antes do git. <span class="seen">Aula <a href="../lessons/0014-dois-states-e-um-portao.html">0014</a></span></dd>
+
   <dt>IMDSv2</dt>
   <dd>A versão do serviço de metadados da instância que exige um token de sessão antes de responder. No Terraform, é <code>metadata_options { http_tokens = "required" }</code>. O <code>trivy config</code> da aula 0014 cobra essa linha. <span class="seen">Aula <a href="../lessons/0013-uma-maquina-sem-porta.html">0013</a></span></dd>
 
@@ -90,6 +93,9 @@
 
   <dt>Lock file do provider (<code>.terraform.lock.hcl</code>)</dt>
   <dd>Gravado pelo <code>init</code> com a versão e os hashes de cada provider. Vai para o git, como o <code>uv.lock</code>. Por padrão, só tem os hashes da plataforma onde rodou; <code>terraform providers lock -platform=...</code> acrescenta outras. <span class="seen">Aula <a href="../lessons/0012-o-state-no-s3.html">0012</a></span></dd>
+
+  <dt>Misconfiguration (configuração insegura)</dt>
+  <dd>Um achado na configuração, e não numa versão de pacote: porta aberta, disco sem cifra, IMDSv1. É o que o <code>trivy config</code> procura no Terraform. Cada regra tem um ID (<code>AWS-0107</code>) e uma severidade. <span class="seen">Aula <a href="../lessons/0014-dois-states-e-um-portao.html">0014</a></span></dd>
 
   <dt>MFA</dt>
   <dd>Autenticação multifator: além da senha, uma segunda prova (chave de acesso ou código de app). Obrigatória na identidade que entra na conta: no EduRAG, o AWS Builder ID. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
@@ -121,8 +127,14 @@
   <dt>Portão (gate)</dt>
   <dd>Uma verificação que <em>bloqueia</em>, e não só avisa. Uma ferramenta vira portão quando o job dela entra nos checks obrigatórios. <span class="seen">Aulas <a href="../lessons/0001-protegendo-a-main.html">0001</a>, <a href="../lessons/0002-segredos-com-gitleaks.html">0002</a></span></dd>
 
+  <dt><code>prevent_destroy</code></dt>
+  <dd>Um item do <code>lifecycle</code> de um recurso: qualquer plano que apagaria o recurso falha com "Instance cannot be destroyed". No EduRAG, protege o Budget. Para largar o recurso sem apagar, usa-se o bloco <code>removed</code> com <code>destroy = false</code>. <span class="seen">Aula <a href="../lessons/0014-dois-states-e-um-portao.html">0014</a></span></dd>
+
   <dt>Provider (Terraform)</dt>
   <dd>O plugin que traduz os blocos do Terraform em chamadas à API de um serviço. Aqui, o <code>hashicorp/aws</code>, fixado por versão. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
+
+  <dt>Root module (Terraform)</dt>
+  <dd>A pasta onde você roda <code>init</code>, <code>plan</code> e <code>apply</code>. Cada root module tem o próprio <em>state</em>. No EduRAG são dois: <code>infra/</code> (destruído a cada sessão) e <code>infra/conta/</code> (o Budget, que fica). <span class="seen">Aula <a href="../lessons/0014-dois-states-e-um-portao.html">0014</a></span></dd>
 
   <dt>Root (conta da AWS)</dt>
   <dd>A identidade criada com a conta, com poder total, que as políticas do IAM não limitam. Fica com MFA, sem access key, e só entra para tarefa que só ele faz. O dia a dia é com um usuário IAM. Num projeto da experiência "AWS (new)", não existe root: o dono é o AWS Builder ID. <span class="seen">Aula <a href="../lessons/0011-a-conta-antes-do-codigo.html">0011</a></span></dd>
